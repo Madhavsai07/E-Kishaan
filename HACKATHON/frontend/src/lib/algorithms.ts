@@ -211,6 +211,7 @@ export interface MLPredictionHorizon {
   predictedHumidity: number;
   rainfallProbability: number;
   predictedRainfall: number;
+  windSpeed: number;
   confidenceScore: number;
   conditionText: string;
 }
@@ -265,6 +266,8 @@ export function predictWeatherMLModel(
       conditionText = 'Pleasant / Cool';
     }
 
+    const predWindSpeed = matchingHourly ? matchingHourly.windSpeed : current.windSpeed;
+
     return {
       horizon: horizonLabels[idx],
       hoursOffset: offset,
@@ -272,36 +275,50 @@ export function predictWeatherMLModel(
       predictedHumidity: Math.round(humidityTrend),
       rainfallProbability: Math.round(rainProb),
       predictedRainfall: Math.round(predRainfall * 10) / 10,
+      windSpeed: Math.round(predWindSpeed),
       confidenceScore,
       conditionText,
     };
   });
 
-  // Calculate ML Weather Risk Severity Classifier
+  // Calculate ML Weather Risk Severity Classifier using REAL live features
   const maxRain = Math.max(current.precipitation, ...horizons.map(h => h.predictedRainfall));
   const maxRainProb = Math.max(...horizons.map(h => h.rainfallProbability));
-  const maxWind = Math.max(current.windSpeed, ...horizons.map(h => h.predictedTemp > 35 ? 25 : 12));
+  // Use actual measured wind speed from live API, not a proxy
+  const maxWind = Math.max(
+    current.windSpeed,
+    ...horizons.map(h => h.windSpeed ?? 0)
+  );
+  const maxHumidity = Math.max(current.humidity, ...horizons.map(h => h.predictedHumidity));
 
   let riskLevel: 'low' | 'moderate' | 'high' | 'severe' = 'low';
-  let alertTitle = 'Optimal Weather Conditions';
-  let alertDescription = 'No immediate severe weather threats detected. Field operations can proceed normally.';
+  let alertTitle = 'Optimal Farming Conditions';
+  let alertDescription = `Current conditions in your district are clear and stable (${current.temperature}°C, ${current.humidity}% humidity, ${current.windSpeed} km/h wind). Field operations can proceed normally.`;
 
-  if (maxRain > 10 || maxRainProb >= 80) {
+  if (maxRain > 5 || maxRainProb >= 70) {
     riskLevel = 'severe';
-    alertTitle = 'Heavy Rainfall & Flooding Alert';
-    alertDescription = `ML model detects high precipitation risk (${maxRainProb}% probability, ~${maxRain}mm rain). Ensure field drainage and pause pesticide application.`;
-  } else if (maxRain > 4 || maxRainProb >= 55) {
+    alertTitle = 'Heavy Rainfall & Flooding Risk Detected';
+    alertDescription = `ML model detects high precipitation risk (${maxRainProb}% probability, ~${maxRain.toFixed(1)}mm expected). Ensure field drainage, avoid pesticide spraying, and protect low-lying crops.`;
+  } else if (maxRain > 1 || maxRainProb >= 40) {
     riskLevel = 'high';
     alertTitle = 'Moderate Rainfall Expected';
-    alertDescription = `Rainfall predicted in upcoming hours (~${maxRain}mm). Postpone foliar fertilization and deep irrigation.`;
-  } else if (maxWind > 25) {
+    alertDescription = `Rainfall likely in upcoming hours (~${maxRain.toFixed(1)}mm, ${maxRainProb}% chance). Postpone foliar fertilization and avoid deep irrigation before rain arrives.`;
+  } else if (maxWind > 20) {
     riskLevel = 'moderate';
     alertTitle = 'High Wind Speed Alert';
-    alertDescription = `Wind speeds up to ${maxWind} km/h predicted. Secure greenhouse structures and support tall crops.`;
-  } else if (current.temperature >= 38) {
+    alertDescription = `Wind speeds of ${current.windSpeed} km/h recorded (gusts up to ${maxWind} km/h expected). Secure greenhouse structures and provide additional support for tall crops.`;
+  } else if (current.temperature >= 37) {
     riskLevel = 'moderate';
-    alertTitle = 'High Temperature & Evaporation Risk';
-    alertDescription = `Temperatures reaching ${current.temperature}°C. Increase evening irrigation cycles to prevent crop thermal stress.`;
+    alertTitle = 'High Temperature & Heat Stress Risk';
+    alertDescription = `Temperature at ${current.temperature}°C (feels like ${current.apparentTemperature}°C). Increase evening irrigation cycles to prevent crop thermal stress and leaf scorch.`;
+  } else if (maxHumidity > 88) {
+    riskLevel = 'moderate';
+    alertTitle = 'High Humidity & Fog / Disease Risk';
+    alertDescription = `Humidity at ${current.humidity}% (peak ${maxHumidity}%). High moisture increases fungal disease risk in Paddy, Wheat, and Cotton. Apply preventive fungicide if needed.`;
+  } else if (current.weatherCode >= 45 && current.weatherCode <= 48) {
+    riskLevel = 'moderate';
+    alertTitle = 'Dense Fog Advisory';
+    alertDescription = `Foggy conditions detected (weather code ${current.weatherCode}). Visibility may be reduced. Delay field spraying operations until fog clears after mid-morning.`;
   }
 
   // Dynamic Punjab-specific agricultural recommendations

@@ -289,15 +289,17 @@ export default function WeatherDashboard({ compact = false }: WeatherDashboardPr
         </Alert>
       )}
 
-      {/* ML Severe Weather Alert Classifier */}
-      {mlResult && mlResult.riskLevel !== 'low' && (
+      {/* ML Severe Weather Alert - Always Visible, Color Coded by Risk Level */}
+      {mlResult && (
         <Alert
           className={
             mlResult.riskLevel === 'severe'
-              ? 'border-red-300 bg-red-50 text-red-900'
+              ? 'border-red-400 bg-red-50 text-red-900 shadow-sm'
               : mlResult.riskLevel === 'high'
-              ? 'border-orange-300 bg-orange-50 text-orange-900'
-              : 'border-yellow-300 bg-yellow-50 text-yellow-900'
+              ? 'border-orange-400 bg-orange-50 text-orange-900 shadow-sm'
+              : mlResult.riskLevel === 'moderate'
+              ? 'border-yellow-400 bg-yellow-50 text-yellow-900 shadow-sm'
+              : 'border-green-400 bg-green-50 text-green-900 shadow-sm'
           }
         >
           <AlertTriangle
@@ -306,17 +308,32 @@ export default function WeatherDashboard({ compact = false }: WeatherDashboardPr
                 ? 'text-red-600'
                 : mlResult.riskLevel === 'high'
                 ? 'text-orange-600'
-                : 'text-yellow-600'
+                : mlResult.riskLevel === 'moderate'
+                ? 'text-yellow-600'
+                : 'text-green-600'
             }`}
           />
-          <AlertTitle className="font-bold flex items-center gap-2">
-            <span>{mlResult.alertTitle} ({currentLocation.name} District)</span>
-            <Badge className="text-[10px] bg-black/10 text-current border-0">
-              ML Severe Weather Classifier
+          <AlertTitle className="font-bold flex items-center gap-2 text-sm">
+            <span>{mlResult.alertTitle} — {currentLocation.name} District</span>
+            <Badge
+              className={`text-[10px] border-0 ${
+                mlResult.riskLevel === 'severe'
+                  ? 'bg-red-200 text-red-900'
+                  : mlResult.riskLevel === 'high'
+                  ? 'bg-orange-200 text-orange-900'
+                  : mlResult.riskLevel === 'moderate'
+                  ? 'bg-yellow-200 text-yellow-900'
+                  : 'bg-green-200 text-green-900'
+              }`}
+            >
+              ML Risk: {mlResult.riskLevel.toUpperCase()}
             </Badge>
           </AlertTitle>
           <AlertDescription className="text-sm mt-1">
             {mlResult.alertDescription}
+            <span className="block text-[11px] mt-1 opacity-70">
+              Predicted at: {mlResult.predictedAt.toLocaleTimeString()} · Source: Open-Meteo API
+            </span>
           </AlertDescription>
         </Alert>
       )}
