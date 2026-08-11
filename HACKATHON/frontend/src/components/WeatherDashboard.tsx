@@ -531,26 +531,22 @@ export default function WeatherDashboard({ compact = false }: WeatherDashboardPr
       {activeResponse && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg font-bold">6-Month Climate Forecast ({currentLocation.name} District)</CardTitle>
-            <CardDescription>Long-term temperature & rainfall patterns for {currentLocation.name} crops</CardDescription>
+            <CardTitle className="text-lg font-bold">6-Month Dynamic Climate Forecast ({currentLocation.name} District)</CardTitle>
+            <CardDescription>Long-term dynamic monthly temperature & rainfall patterns for {currentLocation.name} crops</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={[
-                    { month: 'Oct', avgTemp: Math.round(activeResponse.current.temperature * 0.95), rainfall: 15 },
-                    { month: 'Nov', avgTemp: Math.round(activeResponse.current.temperature * 0.8), rainfall: 10 },
-                    { month: 'Dec', avgTemp: Math.round(activeResponse.current.temperature * 0.65), rainfall: 18 },
-                    { month: 'Jan', avgTemp: Math.round(activeResponse.current.temperature * 0.6), rainfall: 22 },
-                    { month: 'Feb', avgTemp: Math.round(activeResponse.current.temperature * 0.72), rainfall: 30 },
-                    { month: 'Mar', avgTemp: Math.round(activeResponse.current.temperature * 0.85), rainfall: 25 },
-                  ]}
-                >
+                <BarChart data={activeResponse.monthlyClimate}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="month" />
                   <YAxis />
-                  <Tooltip />
+                  <Tooltip
+                    formatter={(value: any, name: string) => [
+                      `${value} ${name.includes('Temp') ? '°C' : 'mm'}`,
+                      name,
+                    ]}
+                  />
                   <Bar dataKey="avgTemp" fill="#f59e0b" name="Avg Temp (°C)" />
                   <Bar dataKey="rainfall" fill="#3b82f6" name="Expected Rain (mm)" />
                 </BarChart>
