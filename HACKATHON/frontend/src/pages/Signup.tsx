@@ -5,9 +5,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Leaf, Eye, EyeOff } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Leaf, Eye, EyeOff, Info, ArrowRight } from 'lucide-react';
 import { toast } from '@/components/ui/sonner';
 import { useAuth } from '@/contexts/AuthContext';
+import { isSupabaseConfigured } from '@/lib/supabase';
 
 export default function Signup() {
   const navigate = useNavigate();
@@ -30,6 +32,12 @@ export default function Signup() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!isSupabaseConfigured) {
+      toast.info('Supabase is not configured yet. Entering Dashboard in Guest Mode.');
+      navigate('/dashboard');
+      return;
+    }
 
     if (formData.password !== formData.confirmPassword) {
       toast.error('Passwords do not match.');
@@ -71,12 +79,32 @@ export default function Signup() {
       </div>
 
       <div className="flex-1 flex items-center justify-center px-4 pb-16">
-        <Card className="w-full max-w-lg">
+        <Card className="w-full max-w-lg shadow-lg">
           <CardHeader className="text-center">
-            <CardTitle className="text-4xl">Create your account</CardTitle>
+            <CardTitle className="text-4xl font-bold text-gray-900">Create your account</CardTitle>
             <CardDescription className="text-lg">Join AgriSmart and start farming smarter</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-6">
+            {!isSupabaseConfigured && (
+              <Alert className="border-blue-300 bg-blue-50 text-blue-900">
+                <Info className="h-5 w-5 text-blue-600" />
+                <AlertTitle className="font-semibold text-blue-950">Supabase Backend Unconfigured</AlertTitle>
+                <AlertDescription className="text-sm mt-1 space-y-3">
+                  <p className="text-blue-800">
+                    Supabase keys are not set in <code className="bg-blue-100 px-1 py-0.5 rounded text-xs font-mono text-blue-900">.env.local</code>. You can access all dashboard modules directly in Guest Mode!
+                  </p>
+                  <Button
+                    type="button"
+                    onClick={() => navigate('/dashboard')}
+                    className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-medium flex items-center justify-center gap-2"
+                  >
+                    <span>Continue to Dashboard (Guest Mode)</span>
+                    <ArrowRight className="w-5 h-5" />
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            )}
+
             <form onSubmit={handleSubmit} className="space-y-5">
               <div className="space-y-2">
                 <Label htmlFor="name" className="text-lg">Full Name</Label>
@@ -86,7 +114,7 @@ export default function Signup() {
                   placeholder="Ravi Kumar"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  required
+                  required={isSupabaseConfigured}
                   className="text-lg h-12"
                 />
               </div>
@@ -99,7 +127,7 @@ export default function Signup() {
                   placeholder="you@example.com"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  required
+                  required={isSupabaseConfigured}
                   className="text-lg h-12"
                 />
               </div>
@@ -125,7 +153,7 @@ export default function Signup() {
                     placeholder="Create a password"
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    required
+                    required={isSupabaseConfigured}
                     className="text-lg h-12 pr-11"
                   />
                   <button
@@ -147,13 +175,13 @@ export default function Signup() {
                   placeholder="Re-enter your password"
                   value={formData.confirmPassword}
                   onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-                  required
+                  required={isSupabaseConfigured}
                   className="text-lg h-12"
                 />
               </div>
 
               <div className="flex items-start gap-2">
-                <Checkbox id="terms" checked={agreed} onCheckedChange={(checked) => setAgreed(checked === true)} required className="w-5 h-5 mt-0.5" />
+                <Checkbox id="terms" checked={agreed} onCheckedChange={(checked) => setAgreed(checked === true)} required={isSupabaseConfigured} className="w-5 h-5 mt-0.5" />
                 <Label htmlFor="terms" className="font-normal cursor-pointer text-lg text-gray-600">
                   I agree to the Terms of Service and Privacy Policy
                 </Label>
@@ -164,7 +192,7 @@ export default function Signup() {
                 disabled={isSubmitting}
                 className="w-full h-12 text-lg bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
               >
-                {isSubmitting ? 'Creating account...' : 'Create Account'}
+                {isSubmitting ? 'Creating account...' : isSupabaseConfigured ? 'Create Account' : 'Open Dashboard'}
               </Button>
             </form>
 

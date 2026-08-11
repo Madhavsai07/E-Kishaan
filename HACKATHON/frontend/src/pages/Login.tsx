@@ -5,9 +5,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Leaf, Eye, EyeOff } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Leaf, Eye, EyeOff, ArrowRight, Info } from 'lucide-react';
 import { toast } from '@/components/ui/sonner';
 import { useAuth } from '@/contexts/AuthContext';
+import { isSupabaseConfigured } from '@/lib/supabase';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -17,7 +19,7 @@ export default function Login() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({ email: '', password: '' });
 
-  // Already signed in? Skip straight to the dashboard (or wherever they were headed).
+  // Already signed in? Skip straight to the dashboard.
   useEffect(() => {
     if (user) {
       const from = (location.state as { from?: Location })?.from?.pathname ?? '/dashboard';
@@ -28,6 +30,14 @@ export default function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+
+    if (!isSupabaseConfigured) {
+      toast.info('Supabase is not configured yet. Entering Dashboard in Guest Mode.');
+      navigate('/dashboard');
+      setIsSubmitting(false);
+      return;
+    }
+
     try {
       await login(formData.email, formData.password);
       toast.success('Welcome back!');
@@ -40,6 +50,12 @@ export default function Login() {
   };
 
   const handleForgotPassword = async () => {
+    if (!isSupabaseConfigured) {
+      toast.info('Supabase is not configured. Redirecting to Dashboard.');
+      navigate('/dashboard');
+      return;
+    }
+
     if (!formData.email) {
       toast.error('Enter your email above first, then click "Forgot password?"');
       return;
@@ -66,12 +82,32 @@ export default function Login() {
       </div>
 
       <div className="flex-1 flex items-center justify-center px-4 pb-16">
-        <Card className="w-full max-w-lg">
+        <Card className="w-full max-w-lg shadow-lg">
           <CardHeader className="text-center">
-            <CardTitle className="text-4xl">Welcome back</CardTitle>
+            <CardTitle className="text-4xl font-bold text-gray-900">Welcome back</CardTitle>
             <CardDescription className="text-lg">Log in to your AgriSmart account</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-6">
+            {!isSupabaseConfigured && (
+              <Alert className="border-blue-300 bg-blue-50 text-blue-900">
+                <Info className="h-5 w-5 text-blue-600" />
+                <AlertTitle className="font-semibold text-blue-950">Supabase Backend Unconfigured</AlertTitle>
+                <AlertDescription className="text-sm mt-1 space-y-3">
+                  <p className="text-blue-800">
+                    Supabase keys are not set in <code className="bg-blue-100 px-1 py-0.5 rounded text-xs font-mono text-blue-900">.env.local</code>. You can access all dashboard modules directly in Guest Mode!
+                  </p>
+                  <Button
+                    type="button"
+                    onClick={() => navigate('/dashboard')}
+                    className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-medium flex items-center justify-center gap-2"
+                  >
+                    <span>Continue to Dashboard (Guest Mode)</span>
+                    <ArrowRight className="w-5 h-5" />
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            )}
+
             <form onSubmit={handleSubmit} className="space-y-5">
               <div className="space-y-2">
                 <Label htmlFor="email" className="text-lg">Email</Label>
@@ -81,7 +117,7 @@ export default function Login() {
                   placeholder="you@example.com"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  required
+                  required={isSupabaseConfigured}
                   className="text-lg h-12"
                 />
               </div>
@@ -95,7 +131,7 @@ export default function Login() {
                     placeholder="Enter your password"
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    required
+                    required={isSupabaseConfigured}
                     className="text-lg h-12 pr-11"
                   />
                   <button
@@ -124,7 +160,7 @@ export default function Login() {
                 disabled={isSubmitting}
                 className="w-full h-12 text-lg bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
               >
-                {isSubmitting ? 'Logging in...' : 'Log In'}
+                {isSubmitting ? 'Logging in...' : isSupabaseConfigured ? 'Log In' : 'Open Dashboard'}
               </Button>
             </form>
 

@@ -76,7 +76,7 @@ export default function Landing() {
               <Link to="/signup">Sign Up</Link>
             </Button>
             <Button asChild size="lg" className="text-base bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700">
-              <Link to="/login">
+              <Link to="/dashboard">
                 Open Dashboard
                 <ArrowRight className="w-5 h-5" />
               </Link>
@@ -150,7 +150,7 @@ export default function Landing() {
               Jump into your dashboard and see weather, soil, crop, and market insights in one place.
             </p>
             <Button asChild size="lg" variant="secondary" className="mt-6 text-lg px-8 py-6">
-              <Link to="/login">
+              <Link to="/dashboard">
                 Open Dashboard
                 <ArrowRight className="w-5 h-5" />
               </Link>
