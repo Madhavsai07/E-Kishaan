@@ -1,25 +1,47 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Bell, CloudRain, Leaf, TrendingUp, Zap, User, Settings } from 'lucide-react';
+import { Bell, CloudRain, Leaf, TrendingUp, Zap, LogOut } from 'lucide-react';
 import WeatherDashboard from '@/components/WeatherDashboard';
 import SoilFertility from '@/components/SoilFertility';
 import CropGrowth from '@/components/CropGrowth';
 import MarketAnalysis from '@/components/MarketAnalysis';
 import FrankensteinSolver from '@/components/FrankensteinSolver';
 import UserProfile from '@/components/UserProfile';
+import { useAuth } from '@/contexts/AuthContext';
+import { toast } from '@/components/ui/sonner';
+
+// Fallback demo values shown when there's no signed-in Supabase user yet
+// (e.g. Supabase isn't configured, so RequireAuth lets the dashboard through).
+const demoUser = { name: 'Ravi Kumar', location: 'India' };
 
 export default function Index() {
+  const navigate = useNavigate();
+  const { user: authUser, profile, logout } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [user, setUser] = useState({
-    name: 'Ravi Kumar',
-    location: 'Kottayam, Kerala',
-    points: 1250,
-    level: 'Advanced Farmer'
-  });
+
+  const displayName = profile?.name || authUser?.email || demoUser.name;
+  const displayLocation = profile?.location || demoUser.location;
+  const initials = displayName
+    .split(' ')
+    .map((part) => part[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      navigate('/');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not log out.');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 via-blue-50 to-emerald-50">
@@ -33,7 +55,7 @@ export default function Index() {
               </div>
               <div>
                 <h1 className="text-2xl font-bold bg-gradient-to-r from-green-700 to-emerald-700 bg-clip-text text-transparent">
-                  AgriSmart Kerala
+                  AgriSmart
                 </h1>
                 <p className="text-sm text-gray-600">AI-Powered Farming Assistant</p>
               </div>
@@ -51,13 +73,18 @@ export default function Index() {
               <div className="flex items-center space-x-2">
                 <Avatar className="w-8 h-8">
                   <AvatarImage src="/placeholder-avatar.jpg" />
-                  <AvatarFallback>RK</AvatarFallback>
+                  <AvatarFallback>{initials || 'U'}</AvatarFallback>
                 </Avatar>
                 <div className="text-sm">
-                  <p className="font-medium">{user.name}</p>
-                  <p className="text-gray-500">{user.points} pts</p>
+                  <p className="font-medium">{displayName}</p>
+                  <p className="text-gray-500">{displayLocation}</p>
                 </div>
               </div>
+
+              <Button variant="ghost" size="sm" onClick={handleLogout}>
+                <LogOut className="w-4 h-4 mr-2" />
+                Log Out
+              </Button>
             </div>
           </div>
         </div>

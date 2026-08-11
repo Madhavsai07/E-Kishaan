@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -6,7 +7,9 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { User, MapPin, Leaf, Trophy, Settings, Edit, Save, X } from 'lucide-react';
+import { User, MapPin, Leaf, Trophy, Settings, Edit, Save, X, LogOut } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { toast } from '@/components/ui/sonner';
 
 interface UserData {
   name: string;
@@ -40,11 +43,14 @@ const farmingStats = {
 };
 
 export default function UserProfile() {
+  const navigate = useNavigate();
+  const { user: authUser, profile, logout, updateProfile } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [userData, setUserData] = useState<UserData>({
     name: 'Ravi Kumar',
-    location: 'Kottayam, Kerala',
-    district: 'Kottayam',
+    location: 'India',
+    district: '',
     landSize: '4.0 acres',
     primaryCrops: ['Rice', 'Coconut', 'Pepper'],
     experience: '12 years',
@@ -54,7 +60,62 @@ export default function UserProfile() {
 
   const [editData, setEditData] = useState<UserData>(userData);
 
-  const handleSave = () => {
+  // Once a real Supabase profile loads, replace the demo defaults with it.
+  useEffect(() => {
+    if (!profile && !authUser) return;
+    setUserData((prev) => ({
+      ...prev,
+      name: profile?.name || prev.name,
+      location: profile?.location || prev.location,
+      landSize: profile?.land_size || prev.landSize,
+      primaryCrops: profile?.primary_crops?.length ? profile.primary_crops : prev.primaryCrops,
+      experience: profile?.experience || prev.experience,
+      phone: profile?.phone || prev.phone,
+      email: profile?.email || authUser?.email || prev.email,
+    }));
+  }, [profile, authUser]);
+
+  // Keep the edit form's draft in sync with the source data while not editing.
+  useEffect(() => {
+    if (!isEditing) setEditData(userData);
+  }, [userData, isEditing]);
+
+  const initials = userData.name
+    .split(' ')
+    .map((part) => part[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join('')
+    .toUpperCase() || 'U';
+
+  const handleEditToggle = () => {
+    if (isEditing) {
+      handleCancel();
+    } else {
+      setEditData(userData);
+      setIsEditing(true);
+    }
+  };
+
+  const handleSave = async () => {
+    if (authUser) {
+      setIsSaving(true);
+      try {
+        await updateProfile({
+          name: editData.name,
+          location: editData.location,
+          land_size: editData.landSize,
+          experience: editData.experience,
+          phone: editData.phone,
+        });
+        toast.success('Profile updated.');
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Could not save your profile.');
+        setIsSaving(false);
+        return;
+      }
+      setIsSaving(false);
+    }
     setUserData(editData);
     setIsEditing(false);
   };
@@ -62,6 +123,15 @@ export default function UserProfile() {
   const handleCancel = () => {
     setEditData(userData);
     setIsEditing(false);
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      navigate('/');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not log out.');
+    }
   };
 
   const earnedAchievements = achievements.filter(a => a.earned);
@@ -76,7 +146,7 @@ export default function UserProfile() {
             <div className="flex items-center space-x-4">
               <Avatar className="w-20 h-20">
                 <AvatarImage src="/placeholder-avatar.jpg" />
-                <AvatarFallback className="text-2xl">RK</AvatarFallback>
+                <AvatarFallback className="text-2xl">{initials}</AvatarFallback>
               </Avatar>
               <div>
                 <h2 className="text-2xl font-bold">{userData.name}</h2>
@@ -93,7 +163,7 @@ export default function UserProfile() {
             </div>
             <Button
               variant="outline"
-              onClick={() => setIsEditing(!isEditing)}
+              onClick={handleEditToggle}
               className="flex items-center gap-2"
             >
               {isEditing ? <X className="w-4 h-4" /> : <Edit className="w-4 h-4" />}
@@ -120,11 +190,11 @@ export default function UserProfile() {
               </CardTitle>
               {isEditing && (
                 <div className="flex gap-2">
-                  <Button onClick={handleSave} size="sm">
+                  <Button onClick={handleSave} size="sm" disabled={isSaving}>
                     <Save className="w-4 h-4 mr-2" />
-                    Save Changes
+                    {isSaving ? 'Saving...' : 'Save Changes'}
                   </Button>
-                  <Button variant="outline" onClick={handleCancel} size="sm">
+                  <Button variant="outline" onClick={handleCancel} size="sm" disabled={isSaving}>
                     Cancel
                   </Button>
                 </div>
@@ -138,6 +208,15 @@ export default function UserProfile() {
                     id="name"
                     value={isEditing ? editData.name : userData.name}
                     onChange={(e) => setEditData({ ...editData, name: e.target.value })}
+                    disabled={!isEditing}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="location">Location</Label>
+                  <Input
+                    id="location"
+                    value={isEditing ? editData.location : userData.location}
+                    onChange={(e) => setEditData({ ...editData, location: e.target.value })}
                     disabled={!isEditing}
                   />
                 </div>
@@ -398,6 +477,10 @@ export default function UserProfile() {
                 </Button>
                 <Button variant="outline" className="w-full justify-start">
                   Reset Progress
+                </Button>
+                <Button variant="outline" className="w-full justify-start" onClick={handleLogout}>
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Log Out
                 </Button>
                 <Button variant="destructive" className="w-full justify-start">
                   Delete Account
