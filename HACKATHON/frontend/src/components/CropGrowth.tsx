@@ -4,42 +4,59 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Sprout, Leaf, Wheat, Calendar, Droplets, Bug, AlertCircle } from 'lucide-react';
+import { Sprout, Leaf, Wheat as WheatIcon, Calendar, Droplets, Bug, AlertCircle } from 'lucide-react';
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 
+// STATIC crop data for Punjab. daysFromPlanting is a fixed value (not derived
+// from new Date()), so the timeline no longer shifts every time the page loads.
 const cropData = [
   {
     id: 1,
-    name: 'Rice',
-    variety: 'Jyothi',
-    plantedDate: '2024-08-15',
-    expectedHarvest: '2024-12-15',
-    currentStage: 'Flowering',
-    progress: 75,
+    name: 'Wheat',
+    variety: 'HD-2967',
+    plantedDate: '2023-11-05',
+    expectedHarvest: '2024-04-15',
+    currentStage: 'Maturity',
+    progress: 100,
     health: 'Excellent',
-    area: '2.5 acres'
+    area: '5.0 acres',
+    daysFromPlanting: 160
   },
   {
     id: 2,
-    name: 'Coconut',
-    variety: 'Dwarf Green',
-    plantedDate: '2023-01-10',
-    expectedHarvest: 'Ongoing',
-    currentStage: 'Mature',
-    progress: 100,
+    name: 'Rice',
+    variety: 'Pusa Basmati 1121',
+    plantedDate: '2024-06-10',
+    expectedHarvest: '2024-10-25',
+    currentStage: 'Grain Filling',
+    progress: 85,
     health: 'Good',
-    area: '1.0 acre'
+    area: '3.5 acres',
+    daysFromPlanting: 105
   },
   {
     id: 3,
-    name: 'Pepper',
-    variety: 'Panniyur-1',
-    plantedDate: '2024-06-01',
-    expectedHarvest: '2025-02-01',
-    currentStage: 'Vegetative',
-    progress: 45,
+    name: 'Cotton',
+    variety: 'BT Cotton (RCH-2)',
+    plantedDate: '2024-05-01',
+    expectedHarvest: '2024-11-15',
+    currentStage: 'Flowering',
+    progress: 65,
     health: 'Fair',
-    area: '0.5 acres'
+    area: '2.0 acres',
+    daysFromPlanting: 95
+  },
+  {
+    id: 4,
+    name: 'Sugarcane',
+    variety: 'CoJ 85',
+    plantedDate: '2023-03-01',
+    expectedHarvest: '2024-03-01',
+    currentStage: 'Maturity',
+    progress: 100,
+    health: 'Good',
+    area: '4.0 acres',
+    daysFromPlanting: 365
   }
 ];
 
@@ -52,13 +69,47 @@ const growthStages = [
   { stage: 'Maturity', day: 120, progress: 100 }
 ];
 
-const yieldPrediction = [
-  { month: 'Aug', predicted: 20, actual: 18 },
-  { month: 'Sep', predicted: 35, actual: 32 },
-  { month: 'Oct', predicted: 55, actual: 52 },
-  { month: 'Nov', predicted: 75, actual: null },
-  { month: 'Dec', predicted: 100, actual: null }
-];
+// STATIC yearly yield data (quintals/acre) for Punjab crops, replacing the
+// old month-by-month "predicted vs actual" chart that had null placeholders
+// for future months. All values here are fixed and pre-recorded.
+const yearlyYieldData: Record<string, { year: string; yield: number }[]> = {
+  Wheat: [
+    { year: '2020', yield: 42 },
+    { year: '2021', yield: 44 },
+    { year: '2022', yield: 41 },
+    { year: '2023', yield: 46 },
+    { year: '2024', yield: 48 }
+  ],
+  Rice: [
+    { year: '2020', yield: 29 },
+    { year: '2021', yield: 31 },
+    { year: '2022', yield: 30 },
+    { year: '2023', yield: 33 },
+    { year: '2024', yield: 34 }
+  ],
+  Cotton: [
+    { year: '2020', yield: 7.5 },
+    { year: '2021', yield: 6.8 },
+    { year: '2022', yield: 7.1 },
+    { year: '2023', yield: 7.9 },
+    { year: '2024', yield: 8.2 }
+  ],
+  Sugarcane: [
+    { year: '2020', yield: 320 },
+    { year: '2021', yield: 335 },
+    { year: '2022', yield: 328 },
+    { year: '2023', yield: 342 },
+    { year: '2024', yield: 350 }
+  ]
+};
+
+// Static summary figures shown alongside the chart, per crop.
+const yieldSummary: Record<string, { expected: string; harvestDate: string; confidence: string }> = {
+  Wheat: { expected: '24 tons', harvestDate: 'Apr 15', confidence: '95%' },
+  Rice: { expected: '17 tons', harvestDate: 'Oct 25', confidence: '92%' },
+  Cotton: { expected: '4.1 tons', harvestDate: 'Nov 15', confidence: '88%' },
+  Sugarcane: { expected: '140 tons', harvestDate: 'Mar 01', confidence: '96%' }
+};
 
 export default function CropGrowth() {
   const [selectedCrop, setSelectedCrop] = useState(cropData[0]);
@@ -78,23 +129,19 @@ export default function CropGrowth() {
       case 'Seedling': return <Sprout className="w-4 h-4" />;
       case 'Vegetative': return <Leaf className="w-4 h-4" />;
       case 'Flowering': return <Leaf className="w-4 h-4" />;
-      case 'Grain Filling': return <Wheat className="w-4 h-4" />;
-      case 'Maturity': return <Wheat className="w-4 h-4" />;
+      case 'Grain Filling': return <WheatIcon className="w-4 h-4" />;
+      case 'Maturity': return <WheatIcon className="w-4 h-4" />;
       default: return <Sprout className="w-4 h-4" />;
     }
   };
 
-  const getDaysFromPlanting = (plantedDate: string) => {
-    const planted = new Date(plantedDate);
-    const today = new Date();
-    const diffTime = Math.abs(today.getTime() - planted.getTime());
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  };
+  const cropYield = yearlyYieldData[selectedCrop.name] ?? [];
+  const cropSummary = yieldSummary[selectedCrop.name];
 
   return (
     <div className="space-y-6">
       {/* Crop Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {cropData.map((crop) => (
           <Card
             key={crop.id}
@@ -131,7 +178,7 @@ export default function CropGrowth() {
       <Tabs defaultValue="timeline" className="w-full">
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="timeline">Growth Timeline</TabsTrigger>
-          <TabsTrigger value="predictions">Yield Prediction</TabsTrigger>
+          <TabsTrigger value="predictions">Yield Data</TabsTrigger>
           <TabsTrigger value="recommendations">Recommendations</TabsTrigger>
           <TabsTrigger value="calendar">Care Calendar</TabsTrigger>
         </TabsList>
@@ -145,13 +192,13 @@ export default function CropGrowth() {
               </CardTitle>
               <CardDescription>
                 Planted on {new Date(selectedCrop.plantedDate).toLocaleDateString()} •
-                Day {getDaysFromPlanting(selectedCrop.plantedDate)} of growth cycle
+                Day {selectedCrop.daysFromPlanting} of growth cycle
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
                 {growthStages.map((stage, index) => {
-                  const isCompleted = getDaysFromPlanting(selectedCrop.plantedDate) >= stage.day;
+                  const isCompleted = selectedCrop.daysFromPlanting >= stage.day;
                   const isCurrent = selectedCrop.currentStage === stage.stage;
 
                   return (
@@ -182,37 +229,38 @@ export default function CropGrowth() {
         <TabsContent value="predictions" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Yield Prediction for {selectedCrop.name}</CardTitle>
-              <CardDescription>AI-powered yield forecasting based on weather, soil, and growth data</CardDescription>
+              <CardTitle>Punjab Yearly Yield Data — {selectedCrop.name}</CardTitle>
+              <CardDescription>Static recorded yield (quintals/acre) for the last 5 years</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="h-64 mb-4">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={yieldPrediction}>
+                  <AreaChart data={cropYield}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" />
+                    <XAxis dataKey="year" />
                     <YAxis />
                     <Tooltip />
-                    <Area type="monotone" dataKey="predicted" stackId="1" stroke="#8884d8" fill="#8884d8" fillOpacity={0.6} name="Predicted Yield %" />
-                    <Area type="monotone" dataKey="actual" stackId="2" stroke="#82ca9d" fill="#82ca9d" fillOpacity={0.8} name="Actual Yield %" />
+                    <Area type="monotone" dataKey="yield" stroke="#16a34a" fill="#16a34a" fillOpacity={0.5} name="Yield (quintals/acre)" />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="text-center p-4 bg-blue-50 rounded-lg">
-                  <div className="text-2xl font-bold text-blue-600">2.8 tons</div>
-                  <p className="text-sm text-gray-600">Expected Yield</p>
+              {cropSummary && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="text-center p-4 bg-blue-50 rounded-lg">
+                    <div className="text-2xl font-bold text-blue-600">{cropSummary.expected}</div>
+                    <p className="text-sm text-gray-600">Expected Yield</p>
+                  </div>
+                  <div className="text-center p-4 bg-green-50 rounded-lg">
+                    <div className="text-2xl font-bold text-green-600">{cropSummary.harvestDate}</div>
+                    <p className="text-sm text-gray-600">Harvest Date</p>
+                  </div>
+                  <div className="text-center p-4 bg-orange-50 rounded-lg">
+                    <div className="text-2xl font-bold text-orange-600">{cropSummary.confidence}</div>
+                    <p className="text-sm text-gray-600">Confidence</p>
+                  </div>
                 </div>
-                <div className="text-center p-4 bg-green-50 rounded-lg">
-                  <div className="text-2xl font-bold text-green-600">Dec 15</div>
-                  <p className="text-sm text-gray-600">Harvest Date</p>
-                </div>
-                <div className="text-center p-4 bg-orange-50 rounded-lg">
-                  <div className="text-2xl font-bold text-orange-600">95%</div>
-                  <p className="text-sm text-gray-600">Confidence</p>
-                </div>
-              </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -255,12 +303,12 @@ export default function CropGrowth() {
                   <Alert>
                     <AlertCircle className="h-4 w-4" />
                     <AlertDescription>
-                      High humidity increases blast disease risk. Apply preventive fungicide spray.
+                      High humidity increases blast/rust disease risk. Apply preventive fungicide spray.
                     </AlertDescription>
                   </Alert>
                   <ul className="space-y-1 text-sm">
-                    <li>• Weekly inspection for brown planthopper</li>
-                    <li>• Use pheromone traps for stem borer</li>
+                    <li>• Weekly inspection for aphids and whitefly</li>
+                    <li>• Use pheromone traps for pink bollworm (cotton)</li>
                     <li>• Apply neem oil for organic pest control</li>
                   </ul>
                 </div>
@@ -312,7 +360,7 @@ export default function CropGrowth() {
                   <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
                   <div className="flex-1">
                     <h4 className="font-medium">Pest Inspection</h4>
-                    <p className="text-sm text-gray-600">Weekly check for brown planthopper and stem borer</p>
+                    <p className="text-sm text-gray-600">Weekly check for aphids and pink bollworm</p>
                   </div>
                   <Badge variant="outline">In 3 days</Badge>
                 </div>
