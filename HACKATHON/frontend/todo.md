@@ -56,7 +56,7 @@
 - Mock data for all agricultural metrics
 - Gamified problem-solving module
 - Modern UI with Shadcn components
-- Kerala-focused agricultural insights
+- Region-agnostic agricultural insights
 
 ## Technology Stack:
 - React + TypeScript

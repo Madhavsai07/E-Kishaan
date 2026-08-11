@@ -68,12 +68,110 @@ export interface DailyForecastItem {
   weatherCode: number;
 }
 
+export interface MonthlyClimateItem {
+  month: string;
+  monthFull: string;
+  avgTemp: number;
+  rainfall: number;
+}
+
 export interface OpenMeteoWeatherResponse {
   location: PunjabLocation;
   current: CurrentWeather;
   hourly: HourlyForecastItem[];
   daily: DailyForecastItem[];
+  monthlyClimate: MonthlyClimateItem[];
   fetchedAt: Date;
+}
+
+const MONTH_NAMES_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MONTH_NAMES_FULL = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
+
+// Punjab seasonal monthly climate baselines (Monthly Temp °C, Monthly Rainfall mm)
+const PUNJAB_BASE_CLIMATE: Record<number, { temp: number; rain: number }> = {
+  0: { temp: 13, rain: 25 },  // Jan
+  1: { temp: 16, rain: 30 },  // Feb
+  2: { temp: 22, rain: 20 },  // Mar
+  3: { temp: 28, rain: 15 },  // Apr
+  4: { temp: 34, rain: 18 },  // May
+  5: { temp: 36, rain: 60 },  // Jun
+  6: { temp: 32, rain: 210 }, // Jul
+  7: { temp: 31, rain: 180 }, // Aug
+  8: { temp: 30, rain: 100 }, // Sep
+  9: { temp: 26, rain: 25 },  // Oct
+  10: { temp: 20, rain: 10 }, // Nov
+  11: { temp: 14, rain: 15 }, // Dec
+};
+
+export function calculateDynamic6MonthClimate(
+  location: PunjabLocation,
+  currentTemp: number,
+  currentRain: number
+): MonthlyClimateItem[] {
+  const currentDate = new Date();
+  const currentMonthIdx = currentDate.getMonth();
+
+  // Regional adjustment multipliers for Punjab districts
+  let tempShift = 0;
+  let rainMult = 1.0;
+
+  switch (location.region) {
+    case 'North': // Sub-mountainous foothill zone (Pathankot, Gurdaspur)
+      tempShift = -1.5;
+      rainMult = 1.2;
+      break;
+    case 'South': // Semi-arid southern zone (Bathinda, Mansa, Muktsar)
+      tempShift = 1.5;
+      rainMult = 0.75;
+      break;
+    case 'West': // Border plain zone (Fazilka, Ferozepur)
+      tempShift = 1.0;
+      rainMult = 0.8;
+      break;
+    case 'East': // Eastern sub-plain (Mohali, Patiala, Ropar)
+      tempShift = -0.5;
+      rainMult = 1.1;
+      break;
+    case 'Central': // Central agricultural heartland (Ludhiana, Jalandhar)
+    default:
+      tempShift = 0;
+      rainMult = 1.0;
+      break;
+  }
+
+  // Calculate live temperature anomaly relative to current month's baseline
+  const currentMonthBaseTemp = PUNJAB_BASE_CLIMATE[currentMonthIdx].temp;
+  const tempAnomalyRatio = currentTemp > 0 ? currentTemp / currentMonthBaseTemp : 1.0;
+
+  const result: MonthlyClimateItem[] = [];
+
+  for (let i = 0; i < 6; i++) {
+    const targetMonthIdx = (currentMonthIdx + i) % 12;
+    const base = PUNJAB_BASE_CLIMATE[targetMonthIdx];
+
+    // Compute dynamic temperature adjusting for baseline, regional zone, and live observation anomaly
+    const rawTemp = (base.temp + tempShift) * (0.5 + 0.5 * tempAnomalyRatio);
+    const avgTemp = Math.round(Math.max(8, Math.min(45, rawTemp)));
+
+    // Compute dynamic monthly rainfall adjusting for district climate zone and live rain inputs
+    const liveRainBonus = i === 0 && currentRain > 0 ? currentRain * 5 : 0;
+    const rawRain = (base.rain * rainMult) + liveRainBonus;
+    const rainfall = Math.round(Math.max(5, rawRain));
+
+    const year = currentDate.getFullYear() + (currentMonthIdx + i >= 12 ? 1 : 0);
+
+    result.push({
+      month: MONTH_NAMES_SHORT[targetMonthIdx],
+      monthFull: `${MONTH_NAMES_FULL[targetMonthIdx]} ${year}`,
+      avgTemp,
+      rainfall,
+    });
+  }
+
+  return result;
 }
 
 const WEATHER_CODE_DESCRIPTIONS: Record<number, string> = {
@@ -158,11 +256,20 @@ export async function fetchPunjabWeatherData(
     };
   });
 
+  // Calculate dynamic 6-month climate forecast for the selected Punjab district
+  const monthlyClimate = calculateDynamic6MonthClimate(
+    location,
+    current.temperature,
+    current.precipitation
+  );
+
   return {
     location,
     current,
     hourly,
     daily,
+    monthlyClimate,
     fetchedAt: new Date(),
   };
 }
+
