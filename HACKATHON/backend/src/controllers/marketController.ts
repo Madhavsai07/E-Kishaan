@@ -1,34 +1,39 @@
 import { Request, Response } from 'express';
 
-const priceHistory = [
-  { month: 'Jan', rice: 2800, coconut: 25, pepper: 580 },
-  { month: 'Feb', rice: 2900, coconut: 28, pepper: 620 },
-  { month: 'Mar', rice: 3100, coconut: 30, pepper: 650 },
-  { month: 'Apr', rice: 3200, coconut: 32, pepper: 680 },
-  { month: 'May', rice: 3400, coconut: 35, pepper: 720 },
-  { month: 'Jun', rice: 3300, coconut: 33, pepper: 700 },
-  { month: 'Jul', rice: 3500, coconut: 36, pepper: 750 },
-  { month: 'Aug', rice: 3600, coconut: 38, pepper: 780 },
-  { month: 'Sep', rice: 3700, coconut: 40, pepper: 800 },
-  { month: 'Oct', rice: 3800, coconut: 42, pepper: 820 },
-];
-
-const priceForecast = [
-  { month: 'Nov', rice: 3900, coconut: 44, pepper: 850 },
-  { month: 'Dec', rice: 4100, coconut: 46, pepper: 880 },
-  { month: 'Jan', rice: 4200, coconut: 48, pepper: 900 },
-  { month: 'Feb', rice: 4000, coconut: 45, pepper: 870 },
-  { month: 'Mar', rice: 3800, coconut: 42, pepper: 840 },
-  { month: 'Apr', rice: 3600, coconut: 40, pepper: 810 },
-];
-
-const profitAnalysis = [
-  { crop: 'Rice', investment: 45000, revenue: 84000, profit: 39000, roi: 86.7 },
-  { crop: 'Coconut', investment: 25000, revenue: 48000, profit: 23000, roi: 92.0 },
-  { crop: 'Pepper', investment: 35000, revenue: 58000, profit: 23000, roi: 65.7 },
-];
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 export async function getMarketPricesHandler(_req: Request, res: Response) {
+  const currentDate = new Date();
+  const currentMonthIdx = currentDate.getMonth();
+
+  const priceHistory = [];
+  for (let i = 9; i >= 0; i--) {
+    const mIdx = (currentMonthIdx - i + 12) % 12;
+    const monthLabel = MONTH_NAMES[mIdx];
+    const step = 9 - i;
+    const rice = Math.round(3000 + step * 90 + Math.sin(mIdx) * 140);
+    const coconut = Math.round(26 + step * 1.6 + Math.cos(mIdx) * 3);
+    const pepper = Math.round(610 + step * 22 + Math.sin(mIdx * 0.8) * 30);
+    priceHistory.push({ month: monthLabel, rice, coconut, pepper });
+  }
+
+  const priceForecast = [];
+  const latestHistory = priceHistory[priceHistory.length - 1];
+  for (let i = 1; i <= 6; i++) {
+    const mIdx = (currentMonthIdx + i) % 12;
+    const monthLabel = MONTH_NAMES[mIdx];
+    const rice = Math.round(latestHistory.rice + i * 105 + Math.sin(i) * 70);
+    const coconut = Math.round(latestHistory.coconut + i * 1.5 + Math.cos(i) * 2);
+    const pepper = Math.round(latestHistory.pepper + i * 24 + Math.sin(i * 1.2) * 25);
+    priceForecast.push({ month: monthLabel, rice, coconut, pepper });
+  }
+
+  const profitAnalysis = [
+    { crop: 'Rice', investment: 45000, revenue: Math.round(latestHistory.rice * 22.1), profit: Math.round(latestHistory.rice * 22.1) - 45000, roi: Math.round(((Math.round(latestHistory.rice * 22.1) - 45000) / 45000) * 1000) / 10 },
+    { crop: 'Coconut', investment: 25000, revenue: Math.round(latestHistory.coconut * 1140), profit: Math.round(latestHistory.coconut * 1140) - 25000, roi: Math.round(((Math.round(latestHistory.coconut * 1140) - 25000) / 25000) * 1000) / 10 },
+    { crop: 'Pepper', investment: 35000, revenue: Math.round(latestHistory.pepper * 71), profit: Math.round(latestHistory.pepper * 71) - 35000, roi: Math.round(((Math.round(latestHistory.pepper * 71) - 35000) / 35000) * 1000) / 10 },
+  ];
+
   return res.json({
     success: true,
     history: priceHistory,

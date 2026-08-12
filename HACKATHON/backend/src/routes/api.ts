@@ -1,9 +1,9 @@
 import { Router } from 'express';
-import { getWeatherHandler } from '../controllers/weatherController.js';
-import { getSoilFertilityHandler, addFertilizerLogHandler } from '../controllers/soilController.js';
-import { getMarketPricesHandler } from '../controllers/marketController.js';
-import { solvePotionHandler } from '../controllers/solverController.js';
-import { getUserStatsHandler, updateUserStatsHandler } from '../controllers/userController.js';
+import { getWeatherHandler } from '../controllers/weatherController';
+import { getSoilFertilityHandler, addFertilizerLogHandler } from '../controllers/soilController';
+import { getMarketPricesHandler } from '../controllers/marketController';
+import { solvePotionHandler } from '../controllers/solverController';
+import { getUserStatsHandler, updateUserStatsHandler } from '../controllers/userController';
 
 const router = Router();
 
