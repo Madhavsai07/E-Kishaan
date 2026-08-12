@@ -229,7 +229,6 @@ E-Kishaan/
    npm start
    ```
 
----
 
 ## 🌐 GitHub Repositories
 - **Main Repo**: [https://github.com/Rama542/E-Kishaan.git](https://github.com/Rama542/E-Kishaan.git)
