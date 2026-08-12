@@ -3,9 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "cd HACKATHON/frontend && npm install && npm run build",
+    "build": "cd HACKATHON/frontend && npm install && npm run build && cd ../backend && npm install && npm run build",
     "dev": "cd HACKATHON/frontend && npm run dev",
-    "build:backend": "cd HACKATHON/backend && npm install && npm run build",
     "start": "cd HACKATHON/backend && node dist/server.js"
   }
 }
