@@ -130,13 +130,20 @@ export default function WeatherDashboard({ compact = false }: WeatherDashboardPr
       );
     }
 
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const today = new Date();
     const compactDays = activeResponse
       ? activeResponse.daily.slice(0, 3)
-      : [
-          { day: 'Mon', avgTemp: 28, weatherCode: 0, precipitationSum: 0 },
-          { day: 'Tue', avgTemp: 30, weatherCode: 0, precipitationSum: 0 },
-          { day: 'Wed', avgTemp: 32, weatherCode: 61, precipitationSum: 2 },
-        ];
+      : [0, 1, 2].map((offset) => {
+          const d = new Date(today);
+          d.setDate(d.getDate() + offset);
+          return {
+            day: dayNames[d.getDay()],
+            avgTemp: Math.round(25 + Math.sin(d.getDate()) * 4),
+            weatherCode: offset === 2 ? 61 : 0,
+            precipitationSum: offset === 2 ? 1.5 : 0,
+          };
+        });
 
     return (
       <div className="space-y-4">

@@ -22,7 +22,37 @@ interface UserData {
   experience: string;
   phone: string;
   email: string;
+  farmingMethod: string;
+  irrigationType: string;
+  soilType: string;
 }
+
+const PROFILE_STORAGE_KEY = 'ekishaan_dynamic_farmer_profile_v2';
+
+const getInitialProfile = (): UserData => {
+  try {
+    const saved = localStorage.getItem(PROFILE_STORAGE_KEY);
+    if (saved) {
+      return JSON.parse(saved);
+    }
+  } catch (e) {
+    console.error('Failed to load profile from localStorage', e);
+  }
+
+  return {
+    name: 'Farmer User',
+    location: 'Punjab, India',
+    district: 'Ludhiana',
+    landSize: '5.0 acres',
+    primaryCrops: ['Wheat', 'Rice', 'Cotton'],
+    experience: '10 years',
+    phone: '+91 9876543210',
+    email: 'farmer@ekissaan.org',
+    farmingMethod: 'Integrated Organic',
+    irrigationType: 'Drip & Canal Irrigation',
+    soilType: 'Alluvial Loam',
+  };
+};
 
 export default function UserProfile() {
   const navigate = useNavigate();
@@ -30,25 +60,25 @@ export default function UserProfile() {
   const { stats, achievements, resetStats } = useUserStats();
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [userData, setUserData] = useState<UserData>({
-    name: 'Ravi Kumar',
-    location: 'India',
-    district: '',
-    landSize: '4.0 acres',
-    primaryCrops: ['Rice', 'Coconut', 'Pepper'],
-    experience: '12 years',
-    phone: '+91 9876543210',
-    email: 'ravi.kumar@email.com'
-  });
-
+  
+  const [userData, setUserData] = useState<UserData>(getInitialProfile);
   const [editData, setEditData] = useState<UserData>(userData);
 
-  // Once a real Supabase profile loads, replace the demo defaults with it.
+  // Sync profile data to localStorage whenever updated
+  useEffect(() => {
+    try {
+      localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(userData));
+    } catch (e) {
+      console.error('Failed to save profile', e);
+    }
+  }, [userData]);
+
+  // Replace default initial values when a real Supabase profile loads
   useEffect(() => {
     if (!profile && !authUser) return;
     setUserData((prev) => ({
       ...prev,
-      name: profile?.name || prev.name,
+      name: profile?.name || authUser?.user_metadata?.full_name || prev.name,
       location: profile?.location || prev.location,
       landSize: profile?.land_size || prev.landSize,
       primaryCrops: profile?.primary_crops?.length ? profile.primary_crops : prev.primaryCrops,
@@ -58,7 +88,7 @@ export default function UserProfile() {
     }));
   }, [profile, authUser]);
 
-  // Keep the edit form's draft in sync with the source data while not editing.
+  // Sync draft edit form with source data when not editing
   useEffect(() => {
     if (!isEditing) setEditData(userData);
   }, [userData, isEditing]);
@@ -69,7 +99,7 @@ export default function UserProfile() {
     .filter(Boolean)
     .slice(0, 2)
     .join('')
-    .toUpperCase() || 'U';
+    .toUpperCase() || 'FU';
 
   const handleEditToggle = () => {
     if (isEditing) {
@@ -81,8 +111,8 @@ export default function UserProfile() {
   };
 
   const handleSave = async () => {
+    setIsSaving(true);
     if (authUser) {
-      setIsSaving(true);
       try {
         await updateProfile({
           name: editData.name,
@@ -91,16 +121,14 @@ export default function UserProfile() {
           experience: editData.experience,
           phone: editData.phone,
         });
-        toast.success('Profile updated.');
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'Could not save your profile.');
-        setIsSaving(false);
-        return;
+        toast.error(error instanceof Error ? error.message : 'Could not save profile to server.');
       }
-      setIsSaving(false);
     }
     setUserData(editData);
+    setIsSaving(false);
     setIsEditing(false);
+    toast.success('Farmer Profile updated successfully!');
   };
 
   const handleCancel = () => {
@@ -122,32 +150,32 @@ export default function UserProfile() {
 
   return (
     <div className="space-y-6">
-      {/* Profile Header */}
-      <Card>
+      {/* Dynamic Profile Header */}
+      <Card className="shadow-sm border-emerald-100 bg-gradient-to-r from-emerald-50/40 via-white to-teal-50/30">
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center space-x-4">
-              <Avatar className="w-20 h-20">
-                <AvatarImage src="/placeholder-avatar.jpg" />
-                <AvatarFallback className="text-2xl">{initials}</AvatarFallback>
+              <Avatar className="w-20 h-20 border-2 border-emerald-500 shadow-sm">
+                <AvatarImage src="" />
+                <AvatarFallback className="text-2xl bg-emerald-600 text-white font-bold">{initials}</AvatarFallback>
               </Avatar>
               <div>
-                <h2 className="text-2xl font-bold">{userData.name}</h2>
-                <div className="flex items-center gap-2 text-gray-600">
-                  <MapPin className="w-4 h-4" />
-                  {userData.location}
+                <h2 className="text-2xl font-bold text-gray-900">{userData.name}</h2>
+                <div className="flex items-center gap-2 text-gray-600 text-sm mt-0.5">
+                  <MapPin className="w-4 h-4 text-emerald-600" />
+                  {userData.location} {userData.district ? `(${userData.district} District)` : ''}
                 </div>
-                <div className="flex items-center gap-4 mt-2">
-                  <Badge variant="secondary">{userData.experience} experience</Badge>
-                  <Badge variant="secondary">{userData.landSize}</Badge>
-                  <Badge className="bg-green-600">Points: {stats.userPoints.toLocaleString('en-IN')}</Badge>
+                <div className="flex flex-wrap items-center gap-2 mt-2">
+                  <Badge variant="secondary" className="bg-slate-100 text-slate-800">{userData.experience} experience</Badge>
+                  <Badge variant="secondary" className="bg-slate-100 text-slate-800">{userData.landSize}</Badge>
+                  <Badge className="bg-emerald-600 text-white font-semibold">Points: {stats.userPoints.toLocaleString('en-IN')}</Badge>
                 </div>
               </div>
             </div>
             <Button
               variant="outline"
               onClick={handleEditToggle}
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 border-emerald-300 text-emerald-800 hover:bg-emerald-50 self-start sm:self-auto"
             >
               {isEditing ? <X className="w-4 h-4" /> : <Edit className="w-4 h-4" />}
               {isEditing ? 'Cancel' : 'Edit Profile'}
@@ -166,16 +194,19 @@ export default function UserProfile() {
 
         <TabsContent value="profile" className="space-y-4">
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <User className="w-5 h-5" />
-                Personal Information
-              </CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <User className="w-5 h-5 text-emerald-600" />
+                  Dynamic Personal & Farm Profile Information
+                </CardTitle>
+                <CardDescription>All fields update dynamically and persist live</CardDescription>
+              </div>
               {isEditing && (
                 <div className="flex gap-2">
-                  <Button onClick={handleSave} size="sm" disabled={isSaving}>
-                    <Save className="w-4 h-4 mr-2" />
-                    {isSaving ? 'Saving...' : 'Save Changes'}
+                  <Button onClick={handleSave} size="sm" disabled={isSaving} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                    <Save className="w-4 h-4 mr-1.5" />
+                    {isSaving ? 'Saving...' : 'Save Profile'}
                   </Button>
                   <Button variant="outline" onClick={handleCancel} size="sm" disabled={isSaving}>
                     Cancel
@@ -192,15 +223,17 @@ export default function UserProfile() {
                     value={isEditing ? editData.name : userData.name}
                     onChange={(e) => setEditData({ ...editData, name: e.target.value })}
                     disabled={!isEditing}
+                    className="mt-1"
                   />
                 </div>
                 <div>
-                  <Label htmlFor="location">Location</Label>
+                  <Label htmlFor="location">State / Region</Label>
                   <Input
                     id="location"
                     value={isEditing ? editData.location : userData.location}
                     onChange={(e) => setEditData({ ...editData, location: e.target.value })}
                     disabled={!isEditing}
+                    className="mt-1"
                   />
                 </div>
                 <div>
@@ -210,6 +243,7 @@ export default function UserProfile() {
                     value={isEditing ? editData.district : userData.district}
                     onChange={(e) => setEditData({ ...editData, district: e.target.value })}
                     disabled={!isEditing}
+                    className="mt-1"
                   />
                 </div>
                 <div>
@@ -219,6 +253,7 @@ export default function UserProfile() {
                     value={isEditing ? editData.phone : userData.phone}
                     onChange={(e) => setEditData({ ...editData, phone: e.target.value })}
                     disabled={!isEditing}
+                    className="mt-1"
                   />
                 </div>
                 <div>
@@ -228,6 +263,7 @@ export default function UserProfile() {
                     value={isEditing ? editData.email : userData.email}
                     onChange={(e) => setEditData({ ...editData, email: e.target.value })}
                     disabled={!isEditing}
+                    className="mt-1"
                   />
                 </div>
                 <div>
@@ -237,6 +273,7 @@ export default function UserProfile() {
                     value={isEditing ? editData.landSize : userData.landSize}
                     onChange={(e) => setEditData({ ...editData, landSize: e.target.value })}
                     disabled={!isEditing}
+                    className="mt-1"
                   />
                 </div>
                 <div>
@@ -246,6 +283,37 @@ export default function UserProfile() {
                     value={isEditing ? editData.experience : userData.experience}
                     onChange={(e) => setEditData({ ...editData, experience: e.target.value })}
                     disabled={!isEditing}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="farmingMethod">Farming Method</Label>
+                  <Input
+                    id="farmingMethod"
+                    value={isEditing ? editData.farmingMethod : userData.farmingMethod}
+                    onChange={(e) => setEditData({ ...editData, farmingMethod: e.target.value })}
+                    disabled={!isEditing}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="irrigationType">Irrigation Type</Label>
+                  <Input
+                    id="irrigationType"
+                    value={isEditing ? editData.irrigationType : userData.irrigationType}
+                    onChange={(e) => setEditData({ ...editData, irrigationType: e.target.value })}
+                    disabled={!isEditing}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="soilType">Soil Type</Label>
+                  <Input
+                    id="soilType"
+                    value={isEditing ? editData.soilType : userData.soilType}
+                    onChange={(e) => setEditData({ ...editData, soilType: e.target.value })}
+                    disabled={!isEditing}
+                    className="mt-1"
                   />
                 </div>
               </div>
@@ -255,8 +323,8 @@ export default function UserProfile() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Leaf className="w-5 h-5" />
-                Farming Details
+                <Leaf className="w-5 h-5 text-emerald-600" />
+                Dynamic Farm Operations
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -265,24 +333,24 @@ export default function UserProfile() {
                   <Label>Primary Crops</Label>
                   <div className="flex flex-wrap gap-2 mt-2">
                     {userData.primaryCrops.map((crop, index) => (
-                      <Badge key={index} variant="secondary" className="bg-green-100 text-green-800">
+                      <Badge key={index} variant="secondary" className="bg-emerald-100 text-emerald-800 font-medium">
                         {crop}
                       </Badge>
                     ))}
                   </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="p-4 bg-blue-50 rounded-lg">
-                    <h4 className="font-medium text-blue-800">Farming Method</h4>
-                    <p className="text-sm text-blue-600 mt-1">Integrated Organic</p>
+                  <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
+                    <h4 className="font-semibold text-blue-900">Farming Method</h4>
+                    <p className="text-sm text-blue-700 mt-1 font-medium">{userData.farmingMethod}</p>
                   </div>
-                  <div className="p-4 bg-green-50 rounded-lg">
-                    <h4 className="font-medium text-green-800">Irrigation Type</h4>
-                    <p className="text-sm text-green-600 mt-1">Drip + Sprinkler</p>
+                  <div className="p-4 bg-emerald-50 rounded-lg border border-emerald-100">
+                    <h4 className="font-semibold text-emerald-900">Irrigation Type</h4>
+                    <p className="text-sm text-emerald-700 mt-1 font-medium">{userData.irrigationType}</p>
                   </div>
-                  <div className="p-4 bg-orange-50 rounded-lg">
-                    <h4 className="font-medium text-orange-800">Soil Type</h4>
-                    <p className="text-sm text-orange-600 mt-1">Laterite + Alluvial</p>
+                  <div className="p-4 bg-orange-50 rounded-lg border border-orange-100">
+                    <h4 className="font-semibold text-orange-900">Soil Type</h4>
+                    <p className="text-sm text-orange-700 mt-1 font-medium">{userData.soilType}</p>
                   </div>
                 </div>
               </div>
@@ -294,7 +362,7 @@ export default function UserProfile() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Trophy className="w-5 h-5 text-yellow-500" />
+                <Trophy className="w-5 h-5 text-amber-500" />
                 Unlocked Achievements ({earnedAchievements.length}/{achievements.length})
               </CardTitle>
               <CardDescription>Real-time milestones automatically earned through platform activity</CardDescription>
@@ -305,16 +373,16 @@ export default function UserProfile() {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {earnedAchievements.map((achievement) => (
-                    <div key={achievement.id} className="flex items-center gap-3 p-3 bg-green-50 border border-green-200 rounded-lg shadow-sm">
+                    <div key={achievement.id} className="flex items-center gap-3 p-3 bg-emerald-50 border border-emerald-200 rounded-lg shadow-sm">
                       <div className="text-3xl">{achievement.icon}</div>
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
-                          <h4 className="font-medium text-green-900">{achievement.title}</h4>
-                          <Badge variant="outline" className="text-xs border-green-300 text-green-700">{achievement.category}</Badge>
+                          <h4 className="font-medium text-emerald-950">{achievement.title}</h4>
+                          <Badge variant="outline" className="text-xs border-emerald-300 text-emerald-800">{achievement.category}</Badge>
                         </div>
-                        <p className="text-sm text-green-700 mt-0.5">{achievement.description}</p>
+                        <p className="text-sm text-emerald-800 mt-0.5">{achievement.description}</p>
                       </div>
-                      <Badge className="bg-green-600 text-white shrink-0">Earned</Badge>
+                      <Badge className="bg-emerald-600 text-white shrink-0">Earned</Badge>
                     </div>
                   ))}
                 </div>
@@ -356,11 +424,11 @@ export default function UserProfile() {
 
         <TabsContent value="stats" className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card className="border-t-4 border-t-green-500">
+            <Card className="border-t-4 border-t-emerald-500 shadow-sm">
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg flex items-center justify-between">
                   Farming Performance
-                  <Leaf className="w-4 h-4 text-green-600" />
+                  <Leaf className="w-4 h-4 text-emerald-600" />
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -371,7 +439,7 @@ export default function UserProfile() {
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-600">Average ROI</span>
-                    <span className="font-bold text-green-600">+{stats.avgROI}%</span>
+                    <span className="font-bold text-emerald-600">+{stats.avgROI}%</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-600">Best Peak Yield</span>
@@ -381,7 +449,7 @@ export default function UserProfile() {
               </CardContent>
             </Card>
 
-            <Card className="border-t-4 border-t-purple-500">
+            <Card className="border-t-4 border-t-purple-500 shadow-sm">
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg flex items-center justify-between">
                   Platform Activity
@@ -406,7 +474,7 @@ export default function UserProfile() {
               </CardContent>
             </Card>
 
-            <Card className="border-t-4 border-t-blue-500">
+            <Card className="border-t-4 border-t-blue-500 shadow-sm">
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg flex items-center justify-between">
                   Environmental Impact
@@ -417,7 +485,7 @@ export default function UserProfile() {
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-600">Carbon Saved</span>
-                    <span className="font-bold text-green-600">{stats.carbonSaved}</span>
+                    <span className="font-bold text-emerald-600">{stats.carbonSaved}</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-600">Water Conserved</span>
@@ -437,8 +505,8 @@ export default function UserProfile() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Settings className="w-5 h-5" />
-                Platform Settings
+                <Settings className="w-5 h-5 text-emerald-600" />
+                Platform Settings & Actions
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -448,28 +516,14 @@ export default function UserProfile() {
                     <h4 className="font-medium">Weather Alerts</h4>
                     <p className="text-sm text-gray-600">Receive notifications for weather changes</p>
                   </div>
-                  <Button variant="outline" size="sm">Enabled</Button>
+                  <Button variant="outline" size="sm" className="text-emerald-700 border-emerald-300">Enabled</Button>
                 </div>
                 <div className="flex items-center justify-between">
                   <div>
                     <h4 className="font-medium">Price Notifications</h4>
                     <p className="text-sm text-gray-600">Get alerts when crop prices change significantly</p>
                   </div>
-                  <Button variant="outline" size="sm">Enabled</Button>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="font-medium">Challenge Reminders</h4>
-                    <p className="text-sm text-gray-600">Daily reminders for Frankenstein challenges</p>
-                  </div>
-                  <Button variant="outline" size="sm">Disabled</Button>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="font-medium">Data Sharing</h4>
-                    <p className="text-sm text-gray-600">Share anonymized data to improve AI models</p>
-                  </div>
-                  <Button variant="outline" size="sm">Enabled</Button>
+                  <Button variant="outline" size="sm" className="text-emerald-700 border-emerald-300">Enabled</Button>
                 </div>
               </div>
             </CardContent>
@@ -481,19 +535,13 @@ export default function UserProfile() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                <Button variant="outline" className="w-full justify-start">
-                  Export My Data
-                </Button>
-                <Button variant="outline" className="w-full justify-start text-amber-700 hover:text-amber-800" onClick={resetStats}>
+                <Button variant="outline" className="w-full justify-start text-amber-700 hover:text-amber-800 border-amber-200" onClick={resetStats}>
                   <RefreshCw className="w-4 h-4 mr-2" />
                   Reset Activity & Achievements Progress
                 </Button>
-                <Button variant="outline" className="w-full justify-start" onClick={handleLogout}>
+                <Button variant="outline" className="w-full justify-start text-red-600 hover:text-red-700 border-red-200" onClick={handleLogout}>
                   <LogOut className="w-4 h-4 mr-2" />
                   Log Out
-                </Button>
-                <Button variant="destructive" className="w-full justify-start">
-                  Delete Account
                 </Button>
               </div>
             </CardContent>
