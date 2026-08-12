@@ -451,6 +451,8 @@ export default function MarketAnalysis() {
                           activeDot={isFaded ? false : { r: 5 }}
                           name={s.display_name}
                           connectNulls
+                          onMouseEnter={() => setHoveredCrop(s.crop)}
+                          onMouseLeave={() => setHoveredCrop(null)}
                         />
                       );
                     })}
@@ -541,6 +543,8 @@ export default function MarketAnalysis() {
                           fill={s.color}
                           fillOpacity={isFaded ? 0.02 : 0.12}
                           legendType="none"
+                          onMouseEnter={() => setHoveredCrop(s.crop)}
+                          onMouseLeave={() => setHoveredCrop(null)}
                         />,
                         <Area
                           key={`${s.crop}_lower`}
@@ -551,6 +555,8 @@ export default function MarketAnalysis() {
                           fill="#f8fafc"
                           fillOpacity={isFaded ? 0 : 1}
                           legendType="none"
+                          onMouseEnter={() => setHoveredCrop(s.crop)}
+                          onMouseLeave={() => setHoveredCrop(null)}
                         />,
                         /* Forecast Line */
                         <Line
@@ -566,6 +572,8 @@ export default function MarketAnalysis() {
                           activeDot={isFaded ? false : { r: 6 }}
                           name={`${s.display_name} (Forecast)`}
                           connectNulls
+                          onMouseEnter={() => setHoveredCrop(s.crop)}
+                          onMouseLeave={() => setHoveredCrop(null)}
                         />
                       ];
                     })}
