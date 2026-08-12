@@ -6,7 +6,8 @@ import apiRouter from './routes/api';
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 5000;
+const HOST = '0.0.0.0';
 
 app.use(cors());
 app.use(express.json());
@@ -22,9 +23,9 @@ app.get('/', (_req, res) => {
   });
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, HOST, () => {
   // eslint-disable-next-line no-console
-  console.log(`🚀 AgriSmart Express Backend running on http://localhost:${PORT}`);
+  console.log(`🚀 AgriSmart Express Backend running on http://${HOST}:${PORT}`);
 });
 
 export default app;
