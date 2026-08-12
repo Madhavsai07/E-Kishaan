@@ -413,7 +413,8 @@ export default function MarketAnalysis() {
                     <XAxis dataKey="month" tick={{ fontSize: 11 }} />
                     <YAxis 
                       yAxisId="left" 
-                      tick={{ fontSize: 11 }} 
+                      axisLine={{ strokeOpacity: hoveredAxis === 'right' ? 0.1 : 1 }}
+                      tick={{ fontSize: 11, fillOpacity: hoveredAxis === 'right' ? 0.1 : 1 }} 
                       tickFormatter={(val) => `₹${val}`}
                       onMouseEnter={() => setHoveredAxis('left')}
                       onMouseLeave={() => setHoveredAxis(null)}
@@ -421,7 +422,8 @@ export default function MarketAnalysis() {
                     <YAxis 
                       yAxisId="right" 
                       orientation="right" 
-                      tick={{ fontSize: 11 }} 
+                      axisLine={{ strokeOpacity: hoveredAxis === 'left' ? 0.1 : 1 }}
+                      tick={{ fontSize: 11, fillOpacity: hoveredAxis === 'left' ? 0.1 : 1 }} 
                       tickFormatter={(val) => `₹${val}`}
                       onMouseEnter={() => setHoveredAxis('right')}
                       onMouseLeave={() => setHoveredAxis(null)}
@@ -496,7 +498,8 @@ export default function MarketAnalysis() {
                     <XAxis dataKey="month" tick={{ fontSize: 11 }} />
                     <YAxis 
                       yAxisId="left" 
-                      tick={{ fontSize: 11 }} 
+                      axisLine={{ strokeOpacity: hoveredAxis === 'right' ? 0.1 : 1 }}
+                      tick={{ fontSize: 11, fillOpacity: hoveredAxis === 'right' ? 0.1 : 1 }} 
                       tickFormatter={(val) => `₹${val}`}
                       onMouseEnter={() => setHoveredAxis('left')}
                       onMouseLeave={() => setHoveredAxis(null)}
@@ -504,7 +507,8 @@ export default function MarketAnalysis() {
                     <YAxis 
                       yAxisId="right" 
                       orientation="right" 
-                      tick={{ fontSize: 11 }} 
+                      axisLine={{ strokeOpacity: hoveredAxis === 'left' ? 0.1 : 1 }}
+                      tick={{ fontSize: 11, fillOpacity: hoveredAxis === 'left' ? 0.1 : 1 }} 
                       tickFormatter={(val) => `₹${val}`}
                       onMouseEnter={() => setHoveredAxis('right')}
                       onMouseLeave={() => setHoveredAxis(null)}
