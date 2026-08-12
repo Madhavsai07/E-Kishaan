@@ -7,8 +7,10 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { User, MapPin, Leaf, Trophy, Settings, Edit, Save, X, LogOut } from 'lucide-react';
+import { User, MapPin, Leaf, Trophy, Settings, Edit, Save, X, LogOut, RefreshCw, Zap } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useUserStats } from '@/contexts/UserStatsContext';
+import { Progress } from '@/components/ui/progress';
 import { toast } from '@/components/ui/sonner';
 
 interface UserData {
@@ -22,29 +24,10 @@ interface UserData {
   email: string;
 }
 
-const achievements = [
-  { id: 1, title: 'First Harvest', description: 'Completed your first crop cycle', icon: '🌾', earned: true },
-  { id: 2, title: 'Soil Master', description: 'Maintained optimal soil health for 30 days', icon: '🌱', earned: true },
-  { id: 3, title: 'Weather Warrior', description: 'Successfully predicted and prepared for weather changes', icon: '⛈️', earned: true },
-  { id: 4, title: 'Profit Maximizer', description: 'Achieved 20%+ ROI in a season', icon: '💰', earned: true },
-  { id: 5, title: 'Problem Solver', description: 'Solved 5 Frankenstein challenges', icon: '🧠', earned: true },
-  { id: 6, title: 'Organic Champion', description: 'Transitioned to organic farming', icon: '🍃', earned: false },
-  { id: 7, title: 'Tech Innovator', description: 'Used all platform features for 60 days', icon: '🚀', earned: false },
-  { id: 8, title: 'Community Leader', description: 'Helped 10 other farmers', icon: '👥', earned: false },
-];
-
-const farmingStats = {
-  totalSeasons: 8,
-  avgROI: 24.5,
-  bestYield: '3.2 tons/acre',
-  problemsSolved: 12,
-  daysActive: 156,
-  carbonSaved: '2.4 tons CO2'
-};
-
 export default function UserProfile() {
   const navigate = useNavigate();
   const { user: authUser, profile, logout, updateProfile } = useAuth();
+  const { stats, achievements, resetStats } = useUserStats();
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [userData, setUserData] = useState<UserData>({
@@ -135,7 +118,7 @@ export default function UserProfile() {
   };
 
   const earnedAchievements = achievements.filter(a => a.earned);
-  const unearned = achievements.filter(a => !a.earned);
+  const unearnedAchievements = achievements.filter(a => !a.earned);
 
   return (
     <div className="space-y-6">
@@ -157,7 +140,7 @@ export default function UserProfile() {
                 <div className="flex items-center gap-4 mt-2">
                   <Badge variant="secondary">{userData.experience} experience</Badge>
                   <Badge variant="secondary">{userData.landSize}</Badge>
-                  <Badge className="bg-green-500">Level: Advanced Farmer</Badge>
+                  <Badge className="bg-green-600">Points: {stats.userPoints.toLocaleString('en-IN')}</Badge>
                 </div>
               </div>
             </div>
@@ -176,7 +159,7 @@ export default function UserProfile() {
       <Tabs defaultValue="profile" className="w-full">
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="profile">Profile Details</TabsTrigger>
-          <TabsTrigger value="achievements">Achievements</TabsTrigger>
+          <TabsTrigger value="achievements">Achievements ({earnedAchievements.length}/{achievements.length})</TabsTrigger>
           <TabsTrigger value="stats">Statistics</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
@@ -312,41 +295,58 @@ export default function UserProfile() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Trophy className="w-5 h-5 text-yellow-500" />
-                Achievements Earned ({earnedAchievements.length}/{achievements.length})
+                Unlocked Achievements ({earnedAchievements.length}/{achievements.length})
               </CardTitle>
-              <CardDescription>Your farming and problem-solving milestones</CardDescription>
+              <CardDescription>Real-time milestones automatically earned through platform activity</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {earnedAchievements.map((achievement) => (
-                  <div key={achievement.id} className="flex items-center gap-3 p-3 bg-green-50 border border-green-200 rounded-lg">
-                    <div className="text-2xl">{achievement.icon}</div>
-                    <div className="flex-1">
-                      <h4 className="font-medium text-green-800">{achievement.title}</h4>
-                      <p className="text-sm text-green-600">{achievement.description}</p>
+              {earnedAchievements.length === 0 ? (
+                <p className="text-sm text-gray-500">No achievements unlocked yet. Explore features to earn badges!</p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {earnedAchievements.map((achievement) => (
+                    <div key={achievement.id} className="flex items-center gap-3 p-3 bg-green-50 border border-green-200 rounded-lg shadow-sm">
+                      <div className="text-3xl">{achievement.icon}</div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-medium text-green-900">{achievement.title}</h4>
+                          <Badge variant="outline" className="text-xs border-green-300 text-green-700">{achievement.category}</Badge>
+                        </div>
+                        <p className="text-sm text-green-700 mt-0.5">{achievement.description}</p>
+                      </div>
+                      <Badge className="bg-green-600 text-white shrink-0">Earned</Badge>
                     </div>
-                    <Badge className="bg-green-500">Earned</Badge>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle>Upcoming Achievements</CardTitle>
-              <CardDescription>Goals to work towards</CardDescription>
+              <CardTitle className="flex items-center gap-2">
+                <Zap className="w-5 h-5 text-amber-500" />
+                In Progress & Locked Achievements ({unearnedAchievements.length})
+              </CardTitle>
+              <CardDescription>Track your live progress toward unlocking upcoming milestones</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {unearned.map((achievement) => (
-                  <div key={achievement.id} className="flex items-center gap-3 p-3 bg-gray-50 border border-gray-200 rounded-lg">
-                    <div className="text-2xl opacity-50">{achievement.icon}</div>
-                    <div className="flex-1">
-                      <h4 className="font-medium text-gray-700">{achievement.title}</h4>
-                      <p className="text-sm text-gray-500">{achievement.description}</p>
+                {unearnedAchievements.map((achievement) => (
+                  <div key={achievement.id} className="p-3 bg-gray-50 border border-gray-200 rounded-lg space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="text-2xl grayscale opacity-70">{achievement.icon}</div>
+                        <div>
+                          <h4 className="font-medium text-gray-800">{achievement.title}</h4>
+                          <p className="text-xs text-gray-500">{achievement.description}</p>
+                        </div>
+                      </div>
+                      <Badge variant="outline" className="text-xs">{achievement.progress}%</Badge>
                     </div>
-                    <Badge variant="outline">Locked</Badge>
+                    <div className="space-y-1">
+                      <Progress value={achievement.progress} className="h-2 bg-gray-200" />
+                    </div>
                   </div>
                 ))}
               </div>
@@ -356,67 +356,76 @@ export default function UserProfile() {
 
         <TabsContent value="stats" className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card>
+            <Card className="border-t-4 border-t-green-500">
               <CardHeader className="pb-2">
-                <CardTitle className="text-lg">Farming Performance</CardTitle>
+                <CardTitle className="text-lg flex items-center justify-between">
+                  Farming Performance
+                  <Leaf className="w-4 h-4 text-green-600" />
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  <div className="flex justify-between">
+                  <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-600">Total Seasons</span>
-                    <span className="font-medium">{farmingStats.totalSeasons}</span>
+                    <span className="font-bold text-gray-900">{stats.totalSeasons}</span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-600">Average ROI</span>
-                    <span className="font-medium text-green-600">{farmingStats.avgROI}%</span>
+                    <span className="font-bold text-green-600">+{stats.avgROI}%</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Best Yield</span>
-                    <span className="font-medium">{farmingStats.bestYield}</span>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">Best Peak Yield</span>
+                    <span className="font-bold text-gray-900">{stats.bestYield}</span>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="border-t-4 border-t-purple-500">
               <CardHeader className="pb-2">
-                <CardTitle className="text-lg">Platform Activity</CardTitle>
+                <CardTitle className="text-lg flex items-center justify-between">
+                  Platform Activity
+                  <Trophy className="w-4 h-4 text-purple-600" />
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  <div className="flex justify-between">
+                  <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-600">Days Active</span>
-                    <span className="font-medium">{farmingStats.daysActive}</span>
+                    <span className="font-bold text-gray-900">{stats.daysActive} days</span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-600">Problems Solved</span>
-                    <span className="font-medium text-purple-600">{farmingStats.problemsSolved}</span>
+                    <span className="font-bold text-purple-600">{stats.problemsSolved}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Current Points</span>
-                    <span className="font-medium text-yellow-600">1,250</span>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">Knowledge Points</span>
+                    <span className="font-bold text-amber-600">{stats.userPoints.toLocaleString('en-IN')} pts</span>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="border-t-4 border-t-blue-500">
               <CardHeader className="pb-2">
-                <CardTitle className="text-lg">Environmental Impact</CardTitle>
+                <CardTitle className="text-lg flex items-center justify-between">
+                  Environmental Impact
+                  <Settings className="w-4 h-4 text-blue-600" />
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  <div className="flex justify-between">
+                  <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-600">Carbon Saved</span>
-                    <span className="font-medium text-green-600">{farmingStats.carbonSaved}</span>
+                    <span className="font-bold text-green-600">{stats.carbonSaved}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Water Saved</span>
-                    <span className="font-medium text-blue-600">15,000 L</span>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">Water Conserved</span>
+                    <span className="font-bold text-blue-600">{stats.waterSaved}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Organic Score</span>
-                    <span className="font-medium text-emerald-600">85%</span>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">Organic Health Score</span>
+                    <span className="font-bold text-emerald-600">{stats.organicScore}%</span>
                   </div>
                 </div>
               </CardContent>
@@ -475,8 +484,9 @@ export default function UserProfile() {
                 <Button variant="outline" className="w-full justify-start">
                   Export My Data
                 </Button>
-                <Button variant="outline" className="w-full justify-start">
-                  Reset Progress
+                <Button variant="outline" className="w-full justify-start text-amber-700 hover:text-amber-800" onClick={resetStats}>
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Reset Activity & Achievements Progress
                 </Button>
                 <Button variant="outline" className="w-full justify-start" onClick={handleLogout}>
                   <LogOut className="w-4 h-4 mr-2" />

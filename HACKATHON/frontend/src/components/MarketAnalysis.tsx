@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -6,6 +6,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TrendingUp, TrendingDown, DollarSign, Calendar, Target, AlertCircle } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
+import { useUserStats } from '@/contexts/UserStatsContext';
 
 const priceHistory = [
   { month: 'Jan', rice: 2800, coconut: 25, pepper: 580 },
@@ -42,8 +43,13 @@ const marketTrends = [
 ];
 
 export default function MarketAnalysis() {
+  const { recordMarketCheck } = useUserStats();
   const [selectedCrop, setSelectedCrop] = useState('rice');
   const [timeframe, setTimeframe] = useState('6months');
+
+  useEffect(() => {
+    recordMarketCheck();
+  }, [selectedCrop, recordMarketCheck]);
 
   const getCurrentPrice = (crop: string) => {
     const latest = priceHistory[priceHistory.length - 1];

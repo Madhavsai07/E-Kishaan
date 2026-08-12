@@ -43,12 +43,14 @@ import {
   getWeatherConditionText,
 } from '@/services/weatherService';
 import { predictWeatherMLModel, MLWeatherPredictionResult } from '@/lib/algorithms';
+import { useUserStats } from '@/contexts/UserStatsContext';
 
 interface WeatherDashboardProps {
   compact?: boolean;
 }
 
 export default function WeatherDashboard({ compact = false }: WeatherDashboardProps) {
+  const { recordWeatherCheck } = useUserStats();
   const [selectedLocationId, setSelectedLocationId] = useState<string>('ludhiana');
   const [weatherResponse, setWeatherResponse] = useState<OpenMeteoWeatherResponse | null>(null);
   const [mlResult, setMlResult] = useState<MLWeatherPredictionResult | null>(null);
@@ -85,6 +87,7 @@ export default function WeatherDashboard({ compact = false }: WeatherDashboardPr
         setMlResult(prediction);
         setLastSuccessResponse(response);
         setError(null);
+        recordWeatherCheck();
       } catch (err: any) {
         if (err.name === 'AbortError') {
           return;

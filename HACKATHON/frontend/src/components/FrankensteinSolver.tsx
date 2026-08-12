@@ -9,6 +9,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Zap, Brain, Trophy, Play, RotateCcw, Lightbulb, Target } from 'lucide-react';
 import { solveFrankensteinProblem } from '@/lib/algorithms';
+import { useUserStats } from '@/contexts/UserStatsContext';
 
 interface Solution {
   minOrbs: number;
@@ -62,12 +63,12 @@ const sampleProblems: SampleProblem[] = [
 ];
 
 export default function FrankensteinSolver() {
+  const { stats, recordProblemSolved } = useUserStats();
   const [recipes, setRecipes] = useState<string>('');
   const [targetPotion, setTargetPotion] = useState<string>('');
   const [solution, setSolution] = useState<Solution | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedProblem, setSelectedProblem] = useState<SampleProblem | null>(null);
-  const [userPoints, setUserPoints] = useState<number>(1250);
   const [solvedProblems, setSolvedProblems] = useState<string[]>(['Basic Awakening Potion']);
 
   const handleSolve = async () => {
@@ -79,17 +80,20 @@ export default function FrankensteinSolver() {
     
     try {
       // Simulate AI processing time
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      await new Promise(resolve => setTimeout(resolve, 800));
       
       const result = solveFrankensteinProblem(recipes, targetPotion);
       setSolution(result);
       
-      // Award points for solving
-      if (selectedProblem && !solvedProblems.includes(selectedProblem.title)) {
-        const points = selectedProblem.difficulty === 'Easy' ? 50 : 
-                     selectedProblem.difficulty === 'Medium' ? 100 : 200;
-        setUserPoints((prev: number) => prev + points);
-        setSolvedProblems((prev: string[]) => [...prev, selectedProblem.title]);
+      if (result.minOrbs > 0) {
+        const points = selectedProblem?.difficulty === 'Easy' ? 50 : 
+                       selectedProblem?.difficulty === 'Medium' ? 100 : 
+                       selectedProblem?.difficulty === 'Hard' ? 200 : 75;
+        
+        recordProblemSolved(points, selectedProblem?.title || targetPotion);
+        if (selectedProblem && !solvedProblems.includes(selectedProblem.title)) {
+          setSolvedProblems((prev: string[]) => [...prev, selectedProblem.title]);
+        }
       }
     } catch (error) {
       setSolution({

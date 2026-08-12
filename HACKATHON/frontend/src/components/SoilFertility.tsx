@@ -10,6 +10,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Leaf, Droplets, Zap, AlertCircle, TrendingUp, Plus } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, BarChart, Bar } from 'recharts';
 
+import { useUserStats } from '@/contexts/UserStatsContext';
+import { toast } from '@/components/ui/sonner';
+
 const soilData = {
   nitrogen: 75,
   phosphorus: 68,
@@ -19,7 +22,7 @@ const soilData = {
   moisture: 45
 };
 
-const fertilizerHistory = [
+const defaultFertilizerHistory = [
   { month: 'Jun', nitrogen: 20, phosphorus: 15, potassium: 25 },
   { month: 'Jul', nitrogen: 25, phosphorus: 18, potassium: 30 },
   { month: 'Aug', nitrogen: 22, phosphorus: 20, potassium: 28 },
@@ -38,6 +41,8 @@ const soilTrends = [
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
 
 export default function SoilFertility() {
+  const { recordFertilizerLog } = useUserStats();
+  const [history, setHistory] = useState(defaultFertilizerHistory);
   const [fertilizerInput, setFertilizerInput] = useState({
     nitrogen: '',
     phosphorus: '',
@@ -47,8 +52,23 @@ export default function SoilFertility() {
 
   const handleFertilizerSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Handle fertilizer input submission
-    console.log('Fertilizer input:', fertilizerInput);
+    const n = parseFloat(fertilizerInput.nitrogen) || 0;
+    const p = parseFloat(fertilizerInput.phosphorus) || 0;
+    const k = parseFloat(fertilizerInput.potassium) || 0;
+
+    if (n === 0 && p === 0 && k === 0) {
+      toast.error('Please enter at least one fertilizer amount (N, P, or K).');
+      return;
+    }
+
+    const monthName = new Date(fertilizerInput.date).toLocaleString('default', { month: 'short' });
+    setHistory((prev) => [...prev, { month: monthName, nitrogen: n, phosphorus: p, potassium: k }]);
+    
+    recordFertilizerLog();
+    toast.success('Fertilizer application logged successfully!', {
+      description: `Logged N: ${n}kg, P: ${p}kg, K: ${k}kg on ${fertilizerInput.date}`,
+    });
+
     setFertilizerInput({ nitrogen: '', phosphorus: '', potassium: '', date: new Date().toISOString().split('T')[0] });
   };
 
