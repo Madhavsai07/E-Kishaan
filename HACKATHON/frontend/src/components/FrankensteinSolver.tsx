@@ -143,7 +143,7 @@ export default function FrankensteinSolver() {
         <div className="text-right">
           <div className="flex items-center gap-2">
             <Trophy className="w-5 h-5 text-yellow-500" />
-            <span className="text-lg font-bold">{userPoints} Points</span>
+            <span className="text-lg font-bold">{stats.userPoints} Points</span>
           </div>
           <Badge variant="secondary">Problems Solved: {solvedProblems.length}</Badge>
         </div>
