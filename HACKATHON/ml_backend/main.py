@@ -95,8 +95,10 @@ app.add_middleware(
 
 # ─── Routers ──────────────────────────────────────────────────────────────────
 from routers.market import router as market_router
+from routers.soil_ai import router as soil_router
 
 app.include_router(market_router, prefix="/api")
+app.include_router(soil_router, prefix="/api")
 
 # ─── Root & Health ────────────────────────────────────────────────────────────
 
