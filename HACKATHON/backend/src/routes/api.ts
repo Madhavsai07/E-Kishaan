@@ -14,6 +14,7 @@ import {
 import { getMarketPricesHandler } from '../controllers/marketController';
 import { solvePotionHandler } from '../controllers/solverController';
 import { getUserStatsHandler, updateUserStatsHandler } from '../controllers/userController';
+import { getCropRecommendationsHandler } from '../controllers/cropController';
 
 const router = Router();
 
@@ -21,7 +22,7 @@ const router = Router();
 router.get('/health', (_req, res) => {
   res.json({
     status: 'ok',
-    service: 'AgriSmart E-Kishaan Express Backend',
+    service: 'E-Kishan Express Backend',
     timestamp: new Date().toISOString(),
   });
 });
@@ -38,6 +39,9 @@ router.get('/soil/compare', compareDistrictsHandler);
 router.post('/soil/fertilizer', addFertilizerLogHandler);
 router.post('/soil/admin/sync', adminSyncHandler);
 router.get('/soil/admin/health', adminHealthHandler);
+
+// AI Crop Recommendation & Advisory Engine API
+router.get('/crops/recommendation/:district?', getCropRecommendationsHandler);
 
 // Legacy backward compatibility alias
 router.get('/soil/fertility', getSoilFertilityHandler);
