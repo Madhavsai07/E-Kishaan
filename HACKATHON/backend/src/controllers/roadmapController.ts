@@ -49,7 +49,7 @@ export interface DailyPlannerTask {
 }
 
 export interface UpcomingTaskGroup {
-  groupName: string; // 'Tomorrow', 'This Week', 'Next Week', 'Future'
+  groupName: string;
   tasks: DailyPlannerTask[];
 }
 
@@ -84,7 +84,7 @@ export interface SmartAlert {
   generatedTime: string;
 }
 
-// Global In-Memory Persistent State for Backend API (backed by Supabase)
+// Global In-Memory Persistent State for Backend API
 let currentProfile: FarmOnboardingProfile = {
   farmerName: 'Gurpreet Singh',
   district: 'Ludhiana',
@@ -105,6 +105,75 @@ let currentProfile: FarmOnboardingProfile = {
 
 let dailyDiariesHistory: FarmDailyDiary[] = [];
 let taskStatusMap: Record<string, 'Not Started' | 'In Progress' | 'Completed' | 'Skipped' | 'Delayed'> = {};
+
+// Agronomic Math Helper Engine
+function calculateAgronomicMetrics(districtName: string, profile: FarmOnboardingProfile, weather: any) {
+  const matchKey = Object.keys(PUNJAB_DISTRICTS_GEO).find(
+    (k) => k.toLowerCase() === districtName.toLowerCase()
+  ) || 'Ludhiana';
+  const geo = PUNJAB_DISTRICTS_GEO[matchKey];
+
+  // Calculate days since sowing
+  const planting = new Date(profile.plantingDate || '2026-04-15');
+  const now = new Date();
+  const daysSincePlanting = Math.max(1, Math.floor((now.getTime() - planting.getTime()) / (1000 * 3600 * 24)));
+
+  // Dynamic Growth Stage Detection
+  let calculatedStage = 'Vegetative Stage';
+  if (daysSincePlanting <= 15) calculatedStage = 'Germination Stage';
+  else if (daysSincePlanting <= 45) calculatedStage = 'Early Vegetative / CRI Stage';
+  else if (daysSincePlanting <= 75) calculatedStage = 'Vegetative / Active Tillering';
+  else if (daysSincePlanting <= 95) calculatedStage = 'Flowering & Heading Stage';
+  else if (daysSincePlanting <= 120) calculatedStage = 'Grain Development / Milking';
+  else calculatedStage = 'Maturity & Harvest Stage';
+
+  // Base Yield & Price per crop
+  let baseYield = 24.5;
+  let basePrice = 2425;
+  if (profile.currentCrop.toLowerCase().includes('paddy') || profile.currentCrop.toLowerCase().includes('rice')) {
+    baseYield = 28.0;
+    basePrice = 2300;
+  } else if (profile.currentCrop.toLowerCase().includes('cotton')) {
+    baseYield = 14.0;
+    basePrice = 7100;
+  } else if (profile.currentCrop.toLowerCase().includes('mustard')) {
+    baseYield = 11.0;
+    basePrice = 5650;
+  } else if (profile.currentCrop.toLowerCase().includes('potato')) {
+    baseYield = 135.0;
+    basePrice = 1450;
+  }
+
+  // Soil & Weather Factor Multipliers
+  const ocFactor = Math.min(1.15, Math.max(0.85, geo.oc / 0.65));
+  const nFactor = Math.min(1.1, Math.max(0.9, geo.nitrogen / 90));
+  const weatherFactor = weather.rainfall > 15 ? 0.94 : (weather.temp > 35 ? 0.92 : 1.05);
+
+  const yieldPerAcre = Math.round((baseYield * ocFactor * nFactor * weatherFactor) * 10) / 10;
+  const totalYieldQuintals = Math.round(yieldPerAcre * profile.farmSizeAcres * 10) / 10;
+  const totalGrossRevenue = Math.round(totalYieldQuintals * basePrice);
+  const totalInputCost = Math.round(profile.farmSizeAcres * 6800);
+  const totalNetProfit = Math.max(10000, totalGrossRevenue - totalInputCost);
+
+  const waterBalance = Math.min(100, Math.max(25, Math.round(weather.moisture * 1.4 + (weather.rainfall > 0 ? 15 : 0))));
+  const nutrientBalance = Math.min(100, Math.max(40, Math.round((geo.nitrogen / 110) * 100)));
+  const healthScore = Math.min(98, Math.max(50, Math.round((geo.oc / 0.75) * 40 + (geo.nitrogen / 100) * 40 + 15)));
+
+  return {
+    geo,
+    daysSincePlanting,
+    calculatedStage,
+    yieldPerAcre,
+    totalYieldQuintals,
+    totalGrossRevenue,
+    totalInputCost,
+    totalNetProfit,
+    waterBalance,
+    nutrientBalance,
+    healthScore,
+    basePrice,
+  };
+}
 
 export async function getFarmProfileHandler(req: Request, res: Response) {
   const districtName = (req.query.district || currentProfile.district || 'Ludhiana') as string;
@@ -129,11 +198,7 @@ export async function getFarmDashboardHandler(req: Request, res: Response) {
 
   const geo = PUNJAB_DISTRICTS_GEO[matchKey];
   const weather = await fetchDistrictWeather(geo.lat, geo.lng);
-
-  const waterBalance = Math.min(100, Math.round(weather.moisture * 1.5 + (weather.rainfall > 0 ? 20 : 0)));
-  const nutrientBalance = Math.min(100, Math.round((geo.nitrogen / 110) * 100));
-  const expectedYieldVal = Math.round(currentProfile.farmSizeAcres * 24.5);
-  const expectedProfitVal = Math.round(expectedYieldVal * 2425 - currentProfile.farmSizeAcres * 6500);
+  const calc = calculateAgronomicMetrics(districtName, currentProfile, weather);
 
   const completedCount = Object.values(taskStatusMap).filter((s) => s === 'Completed').length + 7;
   const pendingCount = Object.values(taskStatusMap).filter((s) => s === 'Not Started' || s === 'In Progress').length + 3;
@@ -144,22 +209,22 @@ export async function getFarmDashboardHandler(req: Request, res: Response) {
     success: true,
     dashboard: {
       currentCrop: currentProfile.currentCrop,
-      currentStage: currentProfile.growthStage,
+      currentStage: calc.calculatedStage,
       currentSeason: 'Rabi',
       farmSizeAcres: currentProfile.farmSizeAcres,
       numFields: currentProfile.numFields,
-      healthScore: Math.min(98, Math.round((geo.oc / 0.75) * 40 + (geo.nitrogen / 100) * 40 + 15)),
-      yieldPrediction: `${expectedYieldVal} quintals (${(24.5).toFixed(1)} q/acre)`,
-      profitPrediction: `₹${expectedProfitVal.toLocaleString('en-IN')}`,
-      harvestCountdownDays: 90,
-      roadmapProgressPercent: 54,
+      healthScore: calc.healthScore,
+      yieldPrediction: `${calc.totalYieldQuintals} quintals (${calc.yieldPerAcre} q/acre)`,
+      profitPrediction: `₹${calc.totalNetProfit.toLocaleString('en-IN')}`,
+      harvestCountdownDays: Math.max(10, 135 - calc.daysSincePlanting),
+      roadmapProgressPercent: Math.min(100, Math.round((calc.daysSincePlanting / 135) * 100)),
       riskLevel: weather.rainfall > 10 ? 'Medium' : 'Low',
       weatherSummary: `${weather.temp}°C • Humidity ${weather.humidity}% • Moisture ${weather.moisture}%`,
       soilSummary: `pH ${geo.ph} • OC ${geo.oc}% • N ${geo.nitrogen} kg/ha`,
-      waterBalancePercent: waterBalance,
-      nutrientBalancePercent: nutrientBalance,
-      marketOpportunity: 'High Demand (₹2,425/quintal)',
-      aiConfidence: 95,
+      waterBalancePercent: calc.waterBalance,
+      nutrientBalancePercent: calc.nutrientBalance,
+      marketOpportunity: `High Demand (₹${calc.basePrice}/quintal)`,
+      aiConfidence: Math.min(98, Math.max(80, calc.healthScore + 5)),
       completedTasksCount: completedCount,
       pendingTasksCount: pendingCount,
       skippedTasksCount: skippedCount,
@@ -176,33 +241,35 @@ export async function getTodayTasksHandler(req: Request, res: Response) {
 
   const geo = PUNJAB_DISTRICTS_GEO[matchKey];
   const weather = await fetchDistrictWeather(geo.lat, geo.lng);
+  const calc = calculateAgronomicMetrics(districtName, currentProfile, weather);
 
+  // Dynamic non-empty Today's Tasks calculated dynamically from live weather & soil
   const todayTasks: DailyPlannerTask[] = [
     {
       id: 'task-1',
-      taskName: 'Check Field 1 Soil Moisture & CRI Stage',
-      description: 'Inspect soil moisture levels at 0-7cm depth and crown root initiation progress.',
+      taskName: `Inspect ${currentProfile.currentCrop} Field 1 Moisture & Canopy Health`,
+      description: `Scout field moisture at 0-7cm depth and monitor leaf color uniform emergence.`,
       priority: 'High',
-      estimatedTime: '30 mins',
+      estimatedTime: '35 mins',
       estimatedCost: '₹0',
-      requiredMaterials: 'Soil moisture probe / spade',
-      reason: `Live Open-Meteo temp is ${weather.temp}°C and soil moisture is ${weather.moisture}%.`,
-      benefits: 'Determines whether next 35mm irrigation is required today or can be delayed.',
-      risk: 'Soil compaction if flooded unnecessarily',
+      requiredMaterials: 'Soil moisture probe & notebook',
+      reason: `Live Open-Meteo weather in ${geo.name} reports ${weather.temp}°C temperature and ${weather.moisture}% soil moisture.`,
+      benefits: `Prevents root hypoxia and optimizes irrigation timing for ${currentProfile.farmSizeAcres} acres.`,
+      risk: 'Yield loss up to 10% if moisture drops below 35%',
       deadline: 'Today, 5:00 PM',
       status: taskStatusMap['task-1'] || 'In Progress',
       dependencies: ['Land Prep', 'Sowing'],
-      aiConfidence: 94,
+      aiConfidence: 95,
     },
     {
       id: 'task-2',
-      taskName: `Apply Top Dressing Urea @ 25kg/acre on ${currentProfile.currentCrop}`,
-      description: 'Top dress Neem-coated Urea early morning to optimize leaf canopy nitrogen absorption.',
+      taskName: `Apply Neem-Coated Urea Top Dressing @ 25kg/acre on Field 1 & 2`,
+      description: 'Apply top dressing early morning to maximize leaf stomatal absorption.',
       priority: 'Critical',
       estimatedTime: '1.5 hours',
-      estimatedCost: '₹650',
-      requiredMaterials: 'Neem-coated Urea (2 bags)',
-      reason: `Soil Nitrogen is ${geo.nitrogen} kg/ha (ICAR benchmark is 90 kg/ha).`,
+      estimatedCost: `₹${Math.round(currentProfile.farmSizeAcres * 260)}`,
+      requiredMaterials: `Neem-coated Urea (${Math.round(currentProfile.farmSizeAcres * 0.5)} bags)`,
+      reason: `Soil Nitrogen in ${geo.name} is ${geo.nitrogen} kg/ha (ICAR target is 90 kg/ha). Crop is in ${calc.calculatedStage}.`,
       benefits: 'Boosts leaf chlorophyll & vegetative tillering (+12% yield potential).',
       risk: 'Nitrogen leaching if heavy rain follows',
       deadline: 'Tomorrow, 10:00 AM',
@@ -212,17 +279,33 @@ export async function getTodayTasksHandler(req: Request, res: Response) {
     },
     {
       id: 'task-3',
-      taskName: 'Inspect Field Borders for Aphids & Yellow Rust Symptoms',
-      description: 'Scout 50 plants along field perimeter for early fungal pustules.',
+      taskName: `Foliar Spray of Zinc Sulphate 0.5% & Boron 0.2%`,
+      description: 'Spray micronutrients during vegetative tillering phase.',
       priority: 'Medium',
       estimatedTime: '45 mins',
-      estimatedCost: '₹0',
-      requiredMaterials: 'Magnifying lens & notebook',
-      reason: `High relative humidity (${weather.humidity}%) increases fungal spore germination risk.`,
-      benefits: 'Early detection prevents outbreak across all ${currentProfile.farmSizeAcres} acres.',
-      risk: '20% crop loss if rust outbreak spreads unchecked',
+      estimatedCost: '₹400',
+      requiredMaterials: 'Zinc Sulphate heptahydrate & Knapsack sprayer',
+      reason: `Soil Zinc level is ${geo.zinc} ppm (ideal >1.5 ppm).`,
+      benefits: 'Stimulates internode lengthening and enzyme activity.',
+      risk: 'Interveinal chlorosis if skipped',
       deadline: 'In 2 days',
       status: taskStatusMap['task-3'] || 'Not Started',
+      dependencies: [],
+      aiConfidence: 91,
+    },
+    {
+      id: 'task-4',
+      taskName: `Scout Field Borders for Aphids & Yellow Rust Fungal Spores`,
+      description: 'Inspect 50 plants along perimeter rows for orange-yellow pustules.',
+      priority: weather.humidity > 60 ? 'High' : 'Low',
+      estimatedTime: '30 mins',
+      estimatedCost: '₹0',
+      requiredMaterials: 'Magnifying loupe',
+      reason: `Relative humidity in ${geo.name} is ${weather.humidity}%, providing ideal spore germination micro-climate.`,
+      benefits: 'Early spot treatment prevents full-field infestation.',
+      risk: '20% grain weight destruction if yellow rust spreads',
+      deadline: 'In 3 days',
+      status: taskStatusMap['task-4'] || 'Not Started',
       dependencies: [],
       aiConfidence: 89,
     },
@@ -232,67 +315,91 @@ export async function getTodayTasksHandler(req: Request, res: Response) {
 }
 
 export async function getUpcomingTasksHandler(req: Request, res: Response) {
+  const districtName = (req.query.district || currentProfile.district || 'Ludhiana') as string;
+  const matchKey = Object.keys(PUNJAB_DISTRICTS_GEO).find(
+    (k) => k.toLowerCase() === districtName.toLowerCase()
+  ) || 'Ludhiana';
+
+  const geo = PUNJAB_DISTRICTS_GEO[matchKey];
+  const weather = await fetchDistrictWeather(geo.lat, geo.lng);
+
   const upcomingGroups: UpcomingTaskGroup[] = [
     {
       groupName: 'Tomorrow',
       tasks: [
         {
           id: 'task-up-1',
-          taskName: 'Apply Zinc Sulphate 0.5% Foliar Spray',
-          description: 'Correct micro-nutrient deficiency during peak vegetative tillering.',
+          taskName: 'Prepare Canal Water Pump & Tube-well Maintenance',
+          description: 'Check oil filter and electrical connections for upcoming 30mm irrigation.',
           priority: 'High',
           estimatedTime: '1 hour',
-          estimatedCost: '₹450',
-          requiredMaterials: 'Zinc Sulphate heptahydrate (1 kg)',
-          reason: 'Soil Zinc level is 1.5 ppm, slightly below peak requirement.',
-          benefits: 'Enhances enzyme activity and internode elongation.',
-          risk: 'Leaf chlorosis if skipped',
-          deadline: 'Tomorrow, 4:00 PM',
+          estimatedCost: '₹200',
+          requiredMaterials: 'Pump grease & tools',
+          reason: `Evapotranspiration in ${geo.name} is consuming 3.5mm soil moisture daily.`,
+          benefits: 'Ensures zero downtime during scheduled watering window.',
+          risk: 'Pump breakdown during critical moisture period',
+          deadline: 'Tomorrow, 5:00 PM',
           status: 'Not Started',
-          dependencies: ['Urea Top Dressing'],
-          aiConfidence: 91,
+          dependencies: [],
+          aiConfidence: 92,
         },
       ],
     },
     {
-      groupName: 'This Week',
+      groupName: 'This Week (7-15 Days)',
       tasks: [
         {
           id: 'task-up-2',
-          taskName: '2nd Irrigation Schedule (30mm Water Depth)',
-          description: 'Supply supplemental moisture prior to jointing stage.',
+          taskName: '2nd Supplemental Canal Irrigation (35mm Depth)',
+          description: 'Supply uniform moisture prior to stem elongation.',
           priority: 'Critical',
           estimatedTime: '3 hours',
-          estimatedCost: '₹500 (Electricity/Diesel)',
-          requiredMaterials: 'Tube-well pump arrangement',
-          reason: 'Evapotranspiration rate projected to consume 18mm soil moisture.',
-          benefits: 'Maintains turgor pressure and tiller survival rate.',
+          estimatedCost: '₹500',
+          requiredMaterials: 'Canal water inlet channel',
+          reason: 'Soil moisture is projected to drop below 38% by Thursday.',
+          benefits: 'Sustains tiller survival rate & earhead primordia emergence.',
           risk: 'Tiller mortality under drought stress',
           deadline: 'Thursday, 6:00 PM',
           status: 'Not Started',
-          dependencies: ['Zinc Spray'],
-          aiConfidence: 95,
+          dependencies: ['Urea Top Dressing'],
+          aiConfidence: 96,
+        },
+        {
+          id: 'task-up-3',
+          taskName: 'Broadleaf Weed Control Spray (Clodinafop-propargyl)',
+          description: 'Selective herbicide spray against Phalaris minor weeds.',
+          priority: 'Medium',
+          estimatedTime: '2 hours',
+          estimatedCost: '₹850',
+          requiredMaterials: 'Clodinafop herbicide (400g/acre)',
+          reason: 'Weed emergence threshold crossed 4 plants/m².',
+          benefits: 'Prevents 15% nutrient competition loss.',
+          risk: 'Shading & stunted crop growth',
+          deadline: 'Next Saturday',
+          status: 'Not Started',
+          dependencies: ['2nd Irrigation'],
+          aiConfidence: 90,
         },
       ],
     },
     {
-      groupName: 'Next Week',
+      groupName: 'Next Month (15-30 Days)',
       tasks: [
         {
-          id: 'task-up-3',
-          taskName: 'Broadleaf Weed Control (Clodinafop-propargyl spray)',
-          description: 'Control Phalaris minor and wild oats competition.',
-          priority: 'Medium',
-          estimatedTime: '2 hours',
-          estimatedCost: '₹850',
-          requiredMaterials: 'Herbicide chemical & knapsack sprayer',
-          reason: 'Weed density threshold reached 5 plants/m².',
-          benefits: 'Prevents 15% nutrient competition loss.',
-          risk: 'Yield reduction from weed shading',
-          deadline: 'Next Tuesday',
+          id: 'task-up-4',
+          taskName: 'Foliar Spray of Potassium Nitrate 1% (13-0-45)',
+          description: 'Spray during flowering stage to optimize 1000-grain weight.',
+          priority: 'High',
+          estimatedTime: '1.5 hours',
+          estimatedCost: '₹600',
+          requiredMaterials: 'KNO3 fertilizer (1.5 kg/acre)',
+          reason: 'Soil Potassium level is 185 kg/ha. Foliar K application maximizes grain filling.',
+          benefits: '+12% Grain plumpness and higher hectolitre test weight.',
+          risk: 'Shrivelled grains if K is deficient during milking',
+          deadline: 'Day 75 Post Sowing',
           status: 'Not Started',
-          dependencies: ['2nd Irrigation'],
-          aiConfidence: 88,
+          dependencies: ['Weed Control'],
+          aiConfidence: 94,
         },
       ],
     },
@@ -302,21 +409,25 @@ export async function getUpcomingTasksHandler(req: Request, res: Response) {
 }
 
 export async function getTimelineHandler(req: Request, res: Response) {
+  const districtName = (req.query.district || currentProfile.district || 'Ludhiana') as string;
+  const weather = await fetchDistrictWeather(30.901, 75.857);
+  const calc = calculateAgronomicMetrics(districtName, currentProfile, weather);
+
   const timeline: TimelineMilestone[] = [
-    { timelineId: 'tm-1', stageNumber: 1, stageName: 'Land Preparation', task: 'Deep plowing & leveling', startDate: '2026-04-01', endDate: '2026-04-10', actualCompletionDate: '2026-04-09', progressPercent: 100, currentStage: false, dependencies: [], currentStatus: 'Completed', delayImpact: 'None', nextAction: 'Proceed to seed selection', aiNotes: 'Completed on time with 2 tons/acre compost incorporation.' },
-    { timelineId: 'tm-2', stageNumber: 2, stageName: 'Seed Selection', task: 'HD-2967 seed purchase & test', startDate: '2026-04-10', endDate: '2026-04-12', actualCompletionDate: '2026-04-11', progressPercent: 100, currentStage: false, dependencies: ['tm-1'], currentStatus: 'Completed', delayImpact: 'None', nextAction: 'Seed treatment', aiNotes: 'Certified high germination rate (>92%).' },
-    { timelineId: 'tm-3', stageNumber: 3, stageName: 'Seed Treatment', task: 'Trichoderma coating', startDate: '2026-04-13', endDate: '2026-04-14', actualCompletionDate: '2026-04-14', progressPercent: 100, currentStage: false, dependencies: ['tm-2'], currentStatus: 'Completed', delayImpact: 'None', nextAction: 'Sowing', aiNotes: 'Fungicide treatment completed.' },
-    { timelineId: 'tm-4', stageNumber: 4, stageName: 'Field Preparation', task: 'Laser leveling & ridges', startDate: '2026-04-14', endDate: '2026-04-15', actualCompletionDate: '2026-04-15', progressPercent: 100, currentStage: false, dependencies: ['tm-3'], currentStatus: 'Completed', delayImpact: 'None', nextAction: 'Sowing operation', aiNotes: 'Saved 25% future irrigation water.' },
-    { timelineId: 'tm-5', stageNumber: 5, stageName: 'Sowing', task: 'Seed drill machine sowing', startDate: '2026-04-15', endDate: '2026-04-18', actualCompletionDate: '2026-04-17', progressPercent: 100, currentStage: false, dependencies: ['tm-4'], currentStatus: 'Completed', delayImpact: 'None', nextAction: 'Germination monitoring', aiNotes: 'Basal DAP applied @ 50kg/acre.' },
-    { timelineId: 'tm-6', stageNumber: 6, stageName: 'Germination', task: 'Emergence monitoring & light water', startDate: '2026-04-19', endDate: '2026-04-28', actualCompletionDate: '2026-04-27', progressPercent: 100, currentStage: false, dependencies: ['tm-5'], currentStatus: 'Completed', delayImpact: 'None', nextAction: 'Early vegetative checks', aiNotes: 'Uniform emergence density achieved.' },
-    { timelineId: 'tm-7', stageNumber: 7, stageName: 'Early Vegetative', task: '1st Urea top dressing & CRI check', startDate: '2026-04-29', endDate: '2026-05-15', actualCompletionDate: '2026-05-14', progressPercent: 100, currentStage: false, dependencies: ['tm-6'], currentStatus: 'Completed', delayImpact: 'None', nextAction: 'Vegetative management', aiNotes: 'Crown root initiation successful.' },
-    { timelineId: 'tm-8', stageNumber: 8, stageName: 'Vegetative', task: '2nd Urea split & Zinc spray', startDate: '2026-05-16', endDate: '2026-06-15', progressPercent: 65, currentStage: true, dependencies: ['tm-7'], currentStatus: 'In Progress', delayImpact: 'Delaying >5 days reduces tiller density', nextAction: 'Apply Urea tomorrow morning', aiNotes: 'Currently in active tillering phase.' },
-    { timelineId: 'tm-9', stageNumber: 9, stageName: 'Flowering', task: 'Critical flowering irrigation', startDate: '2026-06-16', endDate: '2026-07-10', progressPercent: 0, currentStage: false, dependencies: ['tm-8'], currentStatus: 'Upcoming', delayImpact: 'Water stress causes floret sterility', nextAction: 'Maintain moisture at 60mm', aiNotes: 'Avoid chemical spraying during bloom.' },
-    { timelineId: 'tm-10', stageNumber: 10, stageName: 'Grain Development', task: 'Potassium Nitrate 1% spray', startDate: '2026-07-11', endDate: '2026-08-10', progressPercent: 0, currentStage: false, dependencies: ['tm-9'], currentStatus: 'Upcoming', delayImpact: 'Lower 1000-grain weight', nextAction: 'Foliar application', aiNotes: 'Increases grain plumpness & test weight.' },
-    { timelineId: 'tm-11', stageNumber: 11, stageName: 'Maturity', task: 'Stop irrigation & drying check', startDate: '2026-08-11', endDate: '2026-08-25', progressPercent: 0, currentStage: false, dependencies: ['tm-10'], currentStatus: 'Upcoming', delayImpact: 'Grain discoloration if wet', nextAction: 'Cut off water 14 days prior', aiNotes: 'Allows natural uniform desiccation.' },
+    { timelineId: 'tm-1', stageNumber: 1, stageName: 'Land Preparation', task: 'Deep plowing & organic levelling', startDate: '2026-04-01', endDate: '2026-04-10', actualCompletionDate: '2026-04-09', progressPercent: 100, currentStage: false, dependencies: [], currentStatus: 'Completed', delayImpact: 'None', nextAction: 'Proceed to seed selection', aiNotes: 'Incorporated 2 tons/acre compost successfully.' },
+    { timelineId: 'tm-2', stageNumber: 2, stageName: 'Seed Selection', task: 'HD-2967 seed purchase & test', startDate: '2026-04-10', endDate: '2026-04-12', actualCompletionDate: '2026-04-11', progressPercent: 100, currentStage: false, dependencies: ['tm-1'], currentStatus: 'Completed', delayImpact: 'None', nextAction: 'Seed treatment', aiNotes: 'Certified ICAR high germination rate (>92%).' },
+    { timelineId: 'tm-3', stageNumber: 3, stageName: 'Seed Treatment', task: 'Trichoderma fungicide coating', startDate: '2026-04-13', endDate: '2026-04-14', actualCompletionDate: '2026-04-14', progressPercent: 100, currentStage: false, dependencies: ['tm-2'], currentStatus: 'Completed', delayImpact: 'None', nextAction: 'Sowing operation', aiNotes: 'Prevents seedling root rot.' },
+    { timelineId: 'tm-4', stageNumber: 4, stageName: 'Field Preparation', task: 'Laser land leveling & ridges', startDate: '2026-04-14', endDate: '2026-04-15', actualCompletionDate: '2026-04-15', progressPercent: 100, currentStage: false, dependencies: ['tm-3'], currentStatus: 'Completed', delayImpact: 'None', nextAction: 'Sowing machine setup', aiNotes: 'Optimized 25% irrigation water efficiency.' },
+    { timelineId: 'tm-5', stageNumber: 5, stageName: 'Sowing', task: 'Seed drill sowing @ 45kg/acre', startDate: '2026-04-15', endDate: '2026-04-18', actualCompletionDate: '2026-04-17', progressPercent: 100, currentStage: false, dependencies: ['tm-4'], currentStatus: 'Completed', delayImpact: 'None', nextAction: 'Germination monitoring', aiNotes: 'Applied basal DAP @ 50kg/acre.' },
+    { timelineId: 'tm-6', stageNumber: 6, stageName: 'Germination', task: 'Emergence count & light water', startDate: '2026-04-19', endDate: '2026-04-28', actualCompletionDate: '2026-04-27', progressPercent: 100, currentStage: false, dependencies: ['tm-5'], currentStatus: 'Completed', delayImpact: 'None', nextAction: 'CRI Stage check', aiNotes: 'Uniform emergence density achieved.' },
+    { timelineId: 'tm-7', stageNumber: 7, stageName: 'Early Vegetative', task: '1st Urea top dressing & CRI check', startDate: '2026-04-29', endDate: '2026-05-15', actualCompletionDate: '2026-05-14', progressPercent: 100, currentStage: false, dependencies: ['tm-6'], currentStatus: 'Completed', delayImpact: 'None', nextAction: 'Vegetative tillering', aiNotes: 'Crown root initiation successful.' },
+    { timelineId: 'tm-8', stageNumber: 8, stageName: 'Vegetative', task: '2nd Urea split & Zinc spray', startDate: '2026-05-16', endDate: '2026-06-15', progressPercent: 65, currentStage: true, dependencies: ['tm-7'], currentStatus: 'In Progress', delayImpact: 'Delaying >5 days reduces tiller density', nextAction: 'Apply Urea tomorrow morning', aiNotes: `Currently active in ${calc.calculatedStage}.` },
+    { timelineId: 'tm-9', stageNumber: 9, stageName: 'Flowering', task: 'Critical flowering irrigation', startDate: '2026-06-16', endDate: '2026-07-10', progressPercent: 0, currentStage: false, dependencies: ['tm-8'], currentStatus: 'Upcoming', delayImpact: 'Water stress causes floret sterility', nextAction: 'Maintain moisture at 60mm', aiNotes: 'Avoid chemical spraying during peak bloom.' },
+    { timelineId: 'tm-10', stageNumber: 10, stageName: 'Grain Development', task: 'Potassium Nitrate 1% foliar spray', startDate: '2026-07-11', endDate: '2026-08-10', progressPercent: 0, currentStage: false, dependencies: ['tm-9'], currentStatus: 'Upcoming', delayImpact: 'Lower 1000-grain weight', nextAction: 'Foliar application', aiNotes: 'Increases grain plumpness & test weight.' },
+    { timelineId: 'tm-11', stageNumber: 11, stageName: 'Maturity', task: 'Stop irrigation & desiccation check', startDate: '2026-08-11', endDate: '2026-08-25', progressPercent: 0, currentStage: false, dependencies: ['tm-10'], currentStatus: 'Upcoming', delayImpact: 'Grain discoloration if wet', nextAction: 'Cut off water 14 days prior', aiNotes: 'Allows natural uniform drying.' },
     { timelineId: 'tm-12', stageNumber: 12, stageName: 'Harvest', task: 'Combine harvester operation', startDate: '2026-08-26', endDate: '2026-09-05', progressPercent: 0, currentStage: false, dependencies: ['tm-11'], currentStatus: 'Upcoming', delayImpact: 'Shattering loss if delayed', nextAction: 'Book combine machine', aiNotes: 'Harvest at 12-14% grain moisture.' },
-    { timelineId: 'tm-13', stageNumber: 13, stageName: 'Storage', task: 'Hermetic bag storage', startDate: '2026-09-06', endDate: '2026-09-15', progressPercent: 0, currentStage: false, dependencies: ['tm-12'], currentStatus: 'Upcoming', delayImpact: 'Insect infestation', nextAction: 'Clean storage room', aiNotes: 'Keep relative humidity below 65%.' },
-    { timelineId: 'tm-14', stageNumber: 14, stageName: 'Market Selling', task: 'Mandi sale during peak price', startDate: '2026-09-16', endDate: '2026-09-30', progressPercent: 0, currentStage: false, dependencies: ['tm-13'], currentStatus: 'Upcoming', delayImpact: 'Off-peak price drop', nextAction: 'Sell at Ludhiana Mandi', aiNotes: 'Target expected price ₹2,425/quintal.' },
+    { timelineId: 'tm-13', stageNumber: 13, stageName: 'Storage', task: 'Hermetic bag storage & neem extract', startDate: '2026-09-06', endDate: '2026-09-15', progressPercent: 0, currentStage: false, dependencies: ['tm-12'], currentStatus: 'Upcoming', delayImpact: 'Weevil infestation', nextAction: 'Clean storage room', aiNotes: 'Keep relative humidity below 65%.' },
+    { timelineId: 'tm-14', stageNumber: 14, stageName: 'Market Selling', task: 'Mandi sale during peak price window', startDate: '2026-09-16', endDate: '2026-09-30', progressPercent: 0, currentStage: false, dependencies: ['tm-13'], currentStatus: 'Upcoming', delayImpact: 'Off-peak price drop', nextAction: 'Sell at Mandi', aiNotes: `Target expected price ₹${calc.basePrice}/quintal.` },
   ];
 
   return res.json({ success: true, timeline });
@@ -330,17 +441,18 @@ export async function getSmartAlertsHandler(req: Request, res: Response) {
 
   const geo = PUNJAB_DISTRICTS_GEO[matchKey];
   const weather = await fetchDistrictWeather(geo.lat, geo.lng);
+  const calc = calculateAgronomicMetrics(districtName, currentProfile, weather);
 
   const alerts: SmartAlert[] = [
     {
       id: 'alert-1',
       title: weather.rainfall > 5 ? '☔ Heavy Rainfall Expected: Skip Irrigation' : '💧 Next Irrigation Recommended in 3 Days',
       severity: weather.rainfall > 5 ? 'High' : 'Medium',
-      reason: `Live Open-Meteo weather shows ${weather.rainfall}mm rainfall forecast and ${weather.moisture}% soil moisture in ${geo.name}.`,
-      recommendedAction: weather.rainfall > 5 ? 'Cancel scheduled canal watering to prevent root rot.' : 'Prepare tube-well pump for 30mm supplemental irrigation on Thursday.',
+      reason: `Live Open-Meteo weather in ${geo.name} reports ${weather.rainfall}mm rainfall forecast and ${weather.moisture}% soil moisture.`,
+      recommendedAction: weather.rainfall > 5 ? 'Cancel scheduled canal watering to prevent root hypoxia.' : 'Prepare tube-well pump for 35mm supplemental watering on Thursday.',
       deadline: 'In 48 Hours',
-      impact: 'Prevents nitrogen leaching & root hypoxia',
-      confidence: 94,
+      impact: 'Prevents nitrogen leaching & root rot',
+      confidence: 95,
       relatedTask: 'task-up-2',
       weatherSource: 'Open-Meteo API',
       generatedTime: '10 mins ago',
@@ -349,7 +461,7 @@ export async function getSmartAlertsHandler(req: Request, res: Response) {
       id: 'alert-2',
       title: '🌱 Top-Dressing Urea Application Due',
       severity: 'Critical',
-      reason: `Current crop (${currentProfile.currentCrop}) is in ${currentProfile.growthStage} requiring 25kg/acre Nitrogen.`,
+      reason: `Current crop (${currentProfile.currentCrop}) is in ${calc.calculatedStage} requiring 25kg/acre Nitrogen.`,
       recommendedAction: 'Apply Neem-Coated Urea early in the morning before daytime temperature rises above 32°C.',
       deadline: 'Tomorrow, 10:00 AM',
       impact: 'Maximizes leaf area index and tiller count (+12% yield)',
@@ -373,9 +485,9 @@ export async function getSmartAlertsHandler(req: Request, res: Response) {
     },
     {
       id: 'alert-4',
-      title: '📈 Wheat Mandi Spot Price Rising',
+      title: `📈 ${currentProfile.currentCrop.split(' ')[0]} Mandi Spot Price Rising`,
       severity: 'Low',
-      reason: 'Ludhiana Grain Market spot prices increased by ₹45/quintal over the last 7 days.',
+      reason: `Local Grain Market spot prices increased by ₹45/quintal over the last 7 days.`,
       recommendedAction: 'Review harvest dry storage bags for maximum profit margin realization.',
       deadline: 'At Harvest',
       impact: '+₹150/quintal profit optimization',
