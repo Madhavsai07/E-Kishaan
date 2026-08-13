@@ -1,17 +1,20 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import LanguageToggle from '@/components/LanguageToggle';
 import { Leaf, Eye, EyeOff, ArrowRight, Info } from 'lucide-react';
 import { toast } from '@/components/ui/sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
 export default function Login() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const { user, login, resetPassword } = useAuth();
@@ -70,22 +73,23 @@ export default function Login() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 via-blue-50 to-emerald-50 flex flex-col">
-      <div className="container mx-auto px-4 py-6">
+      <div className="container mx-auto px-4 py-6 flex items-center justify-between">
         <Link to="/" className="inline-flex items-center space-x-3">
           <div className="w-10 h-10 bg-gradient-to-r from-green-600 to-emerald-600 rounded-lg flex items-center justify-center">
             <Leaf className="w-6 h-6 text-white" />
           </div>
           <span className="text-3xl font-bold bg-gradient-to-r from-green-700 to-emerald-700 bg-clip-text text-transparent">
-            E-Kishan
+            {t('common.appNameShort')}
           </span>
         </Link>
+        <LanguageToggle />
       </div>
 
       <div className="flex-1 flex items-center justify-center px-4 pb-16">
         <Card className="w-full max-w-lg shadow-lg">
           <CardHeader className="text-center">
-            <CardTitle className="text-4xl font-bold text-gray-900">Welcome back</CardTitle>
-            <CardDescription className="text-lg">Log in to your E-Kishan account</CardDescription>
+            <CardTitle className="text-4xl font-bold text-gray-900">{t('auth.login.title')}</CardTitle>
+            <CardDescription className="text-lg">{t('auth.login.subtitle')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             {!isSupabaseConfigured && (
@@ -110,7 +114,7 @@ export default function Login() {
 
             <form onSubmit={handleSubmit} className="space-y-5">
               <div className="space-y-2">
-                <Label htmlFor="email" className="text-lg">Email</Label>
+                <Label htmlFor="email" className="text-lg">{t('auth.login.emailLabel')}</Label>
                 <Input
                   id="email"
                   type="email"
@@ -123,7 +127,7 @@ export default function Login() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="password" className="text-lg">Password</Label>
+                <Label htmlFor="password" className="text-lg">{t('auth.login.passwordLabel')}</Label>
                 <div className="relative">
                   <Input
                     id="password"
@@ -160,14 +164,14 @@ export default function Login() {
                 disabled={isSubmitting}
                 className="w-full h-12 text-lg bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
               >
-                {isSubmitting ? 'Logging in...' : isSupabaseConfigured ? 'Log In' : 'Open Dashboard'}
+                {isSubmitting ? t('auth.login.submitting') : isSupabaseConfigured ? t('auth.login.submit') : t('common.openDashboard')}
               </Button>
             </form>
 
             <p className="mt-6 text-center text-lg text-gray-600">
-              Don't have an account?{' '}
+              {t('auth.login.noAccount')}{' '}
               <Link to="/signup" className="text-green-700 font-medium hover:underline">
-                Sign up
+                {t('auth.login.createOne')}
               </Link>
             </p>
           </CardContent>

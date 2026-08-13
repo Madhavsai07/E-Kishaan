@@ -1,7 +1,9 @@
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import LanguageToggle from '@/components/LanguageToggle';
 import {
   Leaf,
   CloudRain,
@@ -13,47 +15,25 @@ import {
   Github,
 } from 'lucide-react';
 
-const stats = [
-  { label: 'AI-powered modules', value: '6' },
-  { label: 'Avg. seasonal ROI', value: '24%' },
-  { label: 'Soil health accuracy', value: '85%' },
-  { label: 'Crops tracked', value: '3+' },
-];
-
-const features = [
-  {
-    icon: CloudRain,
-    title: 'Weather & Climate',
-    description: '7-day forecasts and 6-month climate planning with automated alerts.',
-  },
-  {
-    icon: Leaf,
-    title: 'Soil Fertility',
-    description: 'NPK tracking, pH balance, and fertilizer recommendations.',
-  },
-  {
-    icon: Sprout,
-    title: 'Crop Growth',
-    description: 'Growth-stage tracking and AI yield predictions from planting to harvest.',
-  },
-  {
-    icon: TrendingUp,
-    title: 'Market & ROI',
-    description: 'Price forecasts, optimal selling times, and profit tracking.',
-  },
-  {
-    icon: Zap,
-    title: 'AI Solver',
-    description: 'A resource-planning puzzle engine that builds problem-solving skills.',
-  },
-  {
-    icon: Trophy,
-    title: 'Farmer Profile',
-    description: 'Achievements, farm details, and environmental impact tracking.',
-  },
-];
-
 export default function Landing() {
+  const { t } = useTranslation();
+
+  const stats = [
+    { label: t('landing.stats.modules'), value: '6' },
+    { label: t('landing.stats.roi'), value: '24%' },
+    { label: t('landing.stats.soilAccuracy'), value: '85%' },
+    { label: t('landing.stats.cropsTracked'), value: '3+' },
+  ];
+
+  const features = [
+    { icon: CloudRain, ...t('landing.features.weather', { returnObjects: true }) },
+    { icon: Leaf, ...t('landing.features.soil', { returnObjects: true }) },
+    { icon: Sprout, ...t('landing.features.crop', { returnObjects: true }) },
+    { icon: TrendingUp, ...t('landing.features.market', { returnObjects: true }) },
+    { icon: Zap, ...t('landing.features.solver', { returnObjects: true }) },
+    { icon: Trophy, ...t('landing.features.profile', { returnObjects: true }) },
+  ] as { icon: typeof CloudRain; title: string; description: string }[];
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 via-blue-50 to-emerald-50">
       {/* Header */}
@@ -65,19 +45,20 @@ export default function Landing() {
             </div>
             <div>
               <h1 className="text-2xl font-bold bg-gradient-to-r from-green-700 to-emerald-700 bg-clip-text text-transparent leading-tight">
-                AgriSmart
+                {t('common.appName')}
               </h1>
-              <p className="text-sm text-gray-600 hidden sm:block">AI-Powered Farming Assistant</p>
+              <p className="text-sm text-gray-600 hidden sm:block">{t('common.tagline')}</p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
+            <LanguageToggle />
             <Button asChild variant="outline" size="lg" className="text-base">
-              <Link to="/signup">Sign Up</Link>
+              <Link to="/signup">{t('common.signUp')}</Link>
             </Button>
             <Button asChild size="lg" className="text-base bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700">
               <Link to="/dashboard">
-                Open Dashboard
+                {t('common.openDashboard')}
                 <ArrowRight className="w-5 h-5" />
               </Link>
             </Button>
@@ -88,20 +69,19 @@ export default function Landing() {
       {/* Hero */}
       <section className="container mx-auto px-4 py-16 md:py-20 text-center">
         <h2 className="text-4xl md:text-6xl font-bold text-gray-900 leading-tight max-w-3xl mx-auto">
-          Grow smarter with{' '}
+          {t('landing.heroTitlePrefix')}{' '}
           <span className="bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
-            AI-powered farming
+            {t('landing.heroTitleHighlight')}
           </span>
         </h2>
         <p className="mt-6 text-xl text-gray-600 max-w-xl mx-auto">
-          One dashboard for weather, soil health, crop tracking, and market timing —
-          so every farming decision is backed by data.
+          {t('landing.heroSubtitle')}
         </p>
 
         <div className="mt-8">
           <Button asChild size="lg" className="text-lg px-8 py-6 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700">
             <Link to="/login">
-              Open Dashboard
+              {t('common.openDashboard')}
               <ArrowRight className="w-5 h-5" />
             </Link>
           </Button>
@@ -120,10 +100,10 @@ export default function Landing() {
       {/* Features */}
       <section className="container mx-auto px-4 py-16">
         <h3 className="text-3xl md:text-4xl font-bold text-gray-900 text-center">
-          Six modules, one smart farming hub
+          {t('landing.featuresTitle')}
         </h3>
         <p className="mt-3 text-lg text-gray-600 text-center max-w-xl mx-auto">
-          Everything a farmer needs to plan, monitor, and profit from every season.
+          {t('landing.featuresSubtitle')}
         </p>
 
         <div className="mt-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -145,13 +125,13 @@ export default function Landing() {
       <section className="container mx-auto px-4 py-16 text-center">
         <Card className="bg-gradient-to-r from-green-600 to-emerald-600 border-none text-white">
           <CardContent className="py-12">
-            <h3 className="text-3xl md:text-4xl font-bold">Ready to farm smarter this season?</h3>
+            <h3 className="text-3xl md:text-4xl font-bold">{t('landing.ctaTitle')}</h3>
             <p className="mt-3 text-lg text-green-50">
-              Jump into your dashboard and see weather, soil, crop, and market insights in one place.
+              {t('landing.ctaSubtitle')}
             </p>
             <Button asChild size="lg" variant="secondary" className="mt-6 text-lg px-8 py-6">
               <Link to="/dashboard">
-                Open Dashboard
+                {t('common.openDashboard')}
                 <ArrowRight className="w-5 h-5" />
               </Link>
             </Button>
@@ -164,7 +144,7 @@ export default function Landing() {
         <div className="container mx-auto px-4 py-8 flex flex-col md:flex-row items-center justify-between gap-4 text-base text-gray-600">
           <div className="flex items-center space-x-2">
             <Leaf className="w-5 h-5 text-green-600" />
-            <span>E-Kishan</span>
+            <span>{t('common.appNameShort')}</span>
           </div>
           <a
             href="https://github.com/Rama542/Agri-Smart"
@@ -173,9 +153,9 @@ export default function Landing() {
             className="flex items-center gap-2 hover:text-green-700 transition-colors"
           >
             <Github className="w-5 h-5" />
-            View on GitHub
+            {t('common.viewOnGithub')}
           </a>
-          <span className="text-sm text-gray-400">© {new Date().getFullYear()} E-Kishan</span>
+          <span className="text-sm text-gray-400">© {new Date().getFullYear()} {t('common.appNameShort')}</span>
         </div>
       </footer>
     </div>

@@ -1,0 +1,101 @@
+{
+  "common": {
+    "appName": "AgriSmart",
+    "appNameShort": "E-Kishan",
+    "tagline": "AI-Powered Farming Assistant",
+    "signUp": "Sign Up",
+    "logIn": "Log In",
+    "logOut": "Log Out",
+    "openDashboard": "Open Dashboard",
+    "viewOnGithub": "View on GitHub",
+    "alerts": "Alerts",
+    "language": "Language",
+    "switchToHindi": "Switch to Hindi",
+    "switchToEnglish": "Switch to English"
+  },
+  "landing": {
+    "stats": {
+      "modules": "AI-powered modules",
+      "roi": "Avg. seasonal ROI",
+      "soilAccuracy": "Soil health accuracy",
+      "cropsTracked": "Crops tracked"
+    },
+    "features": {
+      "weather": { "title": "Weather & Climate", "description": "7-day forecasts and 6-month climate planning with automated alerts." },
+      "soil": { "title": "Soil Fertility", "description": "NPK tracking, pH balance, and fertilizer recommendations." },
+      "crop": { "title": "Crop Growth", "description": "Growth-stage tracking and AI yield predictions from planting to harvest." },
+      "market": { "title": "Market & ROI", "description": "Price forecasts, optimal selling times, and profit tracking." },
+      "solver": { "title": "AI Solver", "description": "A resource-planning puzzle engine that builds problem-solving skills." },
+      "profile": { "title": "Farmer Profile", "description": "Achievements, farm details, and environmental impact tracking." }
+    },
+    "heroTitlePrefix": "Grow smarter with",
+    "heroTitleHighlight": "AI-powered farming",
+    "heroSubtitle": "One dashboard for weather, soil health, crop tracking, and market timing — so every farming decision is backed by data.",
+    "featuresTitle": "Six modules, one smart farming hub",
+    "featuresSubtitle": "Everything a farmer needs to plan, monitor, and profit from every season.",
+    "ctaTitle": "Ready to farm smarter this season?",
+    "ctaSubtitle": "Jump into your dashboard and see weather, soil, crop, and market insights in one place.",
+    "footerRights": "All rights reserved."
+  },
+  "auth": {
+    "login": {
+      "title": "Welcome back",
+      "subtitle": "Log in to your farming dashboard",
+      "emailLabel": "Email",
+      "passwordLabel": "Password",
+      "submit": "Log In",
+      "submitting": "Logging in...",
+      "noAccount": "Don't have an account?",
+      "createOne": "Create one"
+    },
+    "signup": {
+      "title": "Create your account",
+      "subtitle": "Start farming smarter today",
+      "nameLabel": "Full Name",
+      "emailLabel": "Email",
+      "passwordLabel": "Password",
+      "locationLabel": "Location",
+      "confirmPasswordLabel": "Confirm Password",
+      "termsAgree": "I agree to the Terms of Service and Privacy Policy",
+      "submit": "Sign Up",
+      "submitting": "Creating account...",
+      "haveAccount": "Already have an account?",
+      "logIn": "Log in"
+    }
+  },
+  "dashboard": {
+    "tabs": {
+      "dashboard": "Dashboard",
+      "weather": "Weather",
+      "soil": "Soil Health",
+      "crops": "Crop Growth",
+      "market": "Market",
+      "roadmap": "My Farm Roadmap",
+      "solver": "AI Solver"
+    },
+    "overview": {
+      "todaysWeather": "Today's Weather",
+      "partlyCloudy": "Partly Cloudy",
+      "soilHealth": "Soil Health",
+      "excellent": "Excellent",
+      "cropStatus": "Crop Status",
+      "activeCrops": "Active Crops",
+      "expectedRoi": "Expected ROI",
+      "thisSeason": "This Season",
+      "quickWeatherOverview": "Quick Weather Overview",
+      "next7Days": "Next 7 days forecast",
+      "recentAchievements": "Recent Achievements",
+      "farmingJourney": "Your farming journey",
+      "achievement1": "Completed Frankenstein Challenge Level 5",
+      "achievement2": "Optimal soil management for 30 days",
+      "achievement3": "Achieved 20%+ ROI last season"
+    }
+  },
+  "notFound": {
+    "title": "404",
+    "message": "Page Not Found",
+    "description": "The page you're looking for doesn't exist or may have been moved.",
+    "backHome": "Return Home",
+    "goBack": "Go Back"
+  }
+}

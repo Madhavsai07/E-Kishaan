@@ -1,17 +1,20 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import LanguageToggle from '@/components/LanguageToggle';
 import { Leaf, Eye, EyeOff, Info, ArrowRight } from 'lucide-react';
 import { toast } from '@/components/ui/sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
 export default function Signup() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { user, signup } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
@@ -67,22 +70,23 @@ export default function Signup() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 via-blue-50 to-emerald-50 flex flex-col">
-      <div className="container mx-auto px-4 py-6">
+      <div className="container mx-auto px-4 py-6 flex items-center justify-between">
         <Link to="/" className="inline-flex items-center space-x-3">
           <div className="w-10 h-10 bg-gradient-to-r from-green-600 to-emerald-600 rounded-lg flex items-center justify-center">
             <Leaf className="w-6 h-6 text-white" />
           </div>
           <span className="text-3xl font-bold bg-gradient-to-r from-green-700 to-emerald-700 bg-clip-text text-transparent">
-            E-Kishan
+            {t('common.appNameShort')}
           </span>
         </Link>
+        <LanguageToggle />
       </div>
 
       <div className="flex-1 flex items-center justify-center px-4 pb-16">
         <Card className="w-full max-w-lg shadow-lg">
           <CardHeader className="text-center">
-            <CardTitle className="text-4xl font-bold text-gray-900">Create your account</CardTitle>
-            <CardDescription className="text-lg">Join E-Kishan and start farming smarter</CardDescription>
+            <CardTitle className="text-4xl font-bold text-gray-900">{t('auth.signup.title')}</CardTitle>
+            <CardDescription className="text-lg">{t('auth.signup.subtitle')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             {!isSupabaseConfigured && (
@@ -107,7 +111,7 @@ export default function Signup() {
 
             <form onSubmit={handleSubmit} className="space-y-5">
               <div className="space-y-2">
-                <Label htmlFor="name" className="text-lg">Full Name</Label>
+                <Label htmlFor="name" className="text-lg">{t('auth.signup.nameLabel')}</Label>
                 <Input
                   id="name"
                   type="text"
@@ -120,7 +124,7 @@ export default function Signup() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="email" className="text-lg">Email</Label>
+                <Label htmlFor="email" className="text-lg">{t('auth.signup.emailLabel')}</Label>
                 <Input
                   id="email"
                   type="email"
@@ -133,7 +137,7 @@ export default function Signup() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="location" className="text-lg">Location</Label>
+                <Label htmlFor="location" className="text-lg">{t('auth.signup.locationLabel')}</Label>
                 <Input
                   id="location"
                   type="text"
@@ -145,7 +149,7 @@ export default function Signup() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="password" className="text-lg">Password</Label>
+                <Label htmlFor="password" className="text-lg">{t('auth.signup.passwordLabel')}</Label>
                 <div className="relative">
                   <Input
                     id="password"
@@ -168,7 +172,7 @@ export default function Signup() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="confirmPassword" className="text-lg">Confirm Password</Label>
+                <Label htmlFor="confirmPassword" className="text-lg">{t('auth.signup.confirmPasswordLabel')}</Label>
                 <Input
                   id="confirmPassword"
                   type={showPassword ? 'text' : 'password'}
@@ -183,7 +187,7 @@ export default function Signup() {
               <div className="flex items-start gap-2">
                 <Checkbox id="terms" checked={agreed} onCheckedChange={(checked) => setAgreed(checked === true)} required={isSupabaseConfigured} className="w-5 h-5 mt-0.5" />
                 <Label htmlFor="terms" className="font-normal cursor-pointer text-lg text-gray-600">
-                  I agree to the Terms of Service and Privacy Policy
+                  {t('auth.signup.termsAgree')}
                 </Label>
               </div>
 
@@ -192,14 +196,14 @@ export default function Signup() {
                 disabled={isSubmitting}
                 className="w-full h-12 text-lg bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
               >
-                {isSubmitting ? 'Creating account...' : isSupabaseConfigured ? 'Create Account' : 'Open Dashboard'}
+                {isSubmitting ? t('auth.signup.submitting') : isSupabaseConfigured ? t('auth.signup.submit') : t('common.openDashboard')}
               </Button>
             </form>
 
             <p className="mt-6 text-center text-lg text-gray-600">
-              Already have an account?{' '}
+              {t('auth.signup.haveAccount')}{' '}
               <Link to="/login" className="text-green-700 font-medium hover:underline">
-                Log in
+                {t('auth.signup.logIn')}
               </Link>
             </p>
           </CardContent>
