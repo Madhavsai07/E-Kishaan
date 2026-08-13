@@ -136,6 +136,52 @@ CREATE TABLE IF NOT EXISTS public.crop_agronomic_rules (
 ALTER TABLE public.crop_agronomic_rules ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Crop rules public read" ON public.crop_agronomic_rules FOR SELECT USING (true);
 
+-- 8. FARM ONBOARDING PROFILES TABLE (DIGITAL FARM TWIN)
+CREATE TABLE IF NOT EXISTS public.farm_onboarding_profiles (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  user_id TEXT UNIQUE DEFAULT 'default_farmer',
+  farmer_name TEXT NOT NULL DEFAULT 'Gurpreet Singh',
+  district TEXT NOT NULL DEFAULT 'Ludhiana',
+  village TEXT DEFAULT 'Gill',
+  state TEXT DEFAULT 'Punjab',
+  language TEXT DEFAULT 'English',
+  farm_size_acres NUMERIC(6,2) DEFAULT 5.0,
+  num_fields INT DEFAULT 2,
+  irrigation_source TEXT DEFAULT 'Tube-well + Canal',
+  water_availability TEXT DEFAULT 'High',
+  current_crop TEXT DEFAULT 'Wheat (HD-2967)',
+  previous_crop TEXT DEFAULT 'Paddy (Rice)',
+  planting_date DATE DEFAULT CURRENT_DATE - INTERVAL '30 days',
+  expected_harvest_date DATE DEFAULT CURRENT_DATE + INTERVAL '90 days',
+  growth_stage TEXT DEFAULT 'Vegetative Stage',
+  farming_goals TEXT[] DEFAULT '{"Maximum Profit", "Reduce Fertilizer Cost"}',
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.farm_onboarding_profiles ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Farm onboarding profiles viewable by everyone" ON public.farm_onboarding_profiles FOR SELECT USING (true);
+CREATE POLICY "Farm onboarding profiles updateable by everyone" ON public.farm_onboarding_profiles FOR ALL USING (true);
+
+-- 9. FARM DAILY DIARIES TABLE (END-OF-DAY CHECK-IN LOGS)
+CREATE TABLE IF NOT EXISTS public.farm_daily_diaries (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  user_id TEXT DEFAULT 'default_farmer',
+  check_in_date DATE DEFAULT CURRENT_DATE,
+  irrigated BOOLEAN DEFAULT false,
+  fertilizer_applied BOOLEAN DEFAULT false,
+  fertilizer_details TEXT,
+  pests_observed BOOLEAN DEFAULT false,
+  disease_symptoms TEXT,
+  rainfall_observed BOOLEAN DEFAULT false,
+  laborers_count INT DEFAULT 0,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.farm_daily_diaries ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Farm daily diaries public view" ON public.farm_daily_diaries FOR SELECT USING (true);
+CREATE POLICY "Farm daily diaries public insert" ON public.farm_daily_diaries FOR INSERT WITH CHECK (true);
+
 -- Seed Agronomic Rules for 15 Punjab Crops
 INSERT INTO public.crop_agronomic_rules 
   (crop_name, category, min_ph, max_ph, ideal_n, ideal_p, ideal_k, min_oc, ideal_season, water_req_mm, growing_days, avg_yield_quintal_per_acre, base_market_price)

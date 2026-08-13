@@ -15,6 +15,12 @@ import { getMarketPricesHandler } from '../controllers/marketController';
 import { solvePotionHandler } from '../controllers/solverController';
 import { getUserStatsHandler, updateUserStatsHandler } from '../controllers/userController';
 import { getCropRecommendationsHandler } from '../controllers/cropController';
+import {
+  getFarmRoadmapHandler,
+  saveFarmProfileHandler,
+  submitDailyDiaryHandler,
+  updateTaskStatusHandler,
+} from '../controllers/roadmapController';
 
 const router = Router();
 
@@ -42,6 +48,12 @@ router.get('/soil/admin/health', adminHealthHandler);
 
 // AI Crop Recommendation & Advisory Engine API
 router.get('/crops/recommendation/:district?', getCropRecommendationsHandler);
+
+// AI Personalized Farm Roadmap & Smart Advisory System APIs
+router.get('/farm/roadmap/:district?', getFarmRoadmapHandler);
+router.post('/farm/profile', saveFarmProfileHandler);
+router.post('/farm/diary', submitDailyDiaryHandler);
+router.post('/farm/task/status', updateTaskStatusHandler);
 
 // Legacy backward compatibility alias
 router.get('/soil/fertility', getSoilFertilityHandler);

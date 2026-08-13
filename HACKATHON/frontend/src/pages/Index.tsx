@@ -11,6 +11,7 @@ import SoilFertility from '@/components/SoilFertility';
 import CropGrowth from '@/components/CropGrowth';
 import MarketAnalysis from '@/components/MarketAnalysis';
 import FrankensteinSolver from '@/components/FrankensteinSolver';
+import FarmRoadmap from '@/components/FarmRoadmap';
 import UserProfile from '@/components/UserProfile';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/components/ui/sonner';
@@ -93,7 +94,7 @@ export default function Index() {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-6 mb-6">
+          <TabsList className="grid w-full grid-cols-7 mb-6">
             <TabsTrigger value="dashboard" className="flex items-center gap-2">
               <TrendingUp className="w-4 h-4" />
               Dashboard
@@ -113,6 +114,10 @@ export default function Index() {
             <TabsTrigger value="market" className="flex items-center gap-2">
               <TrendingUp className="w-4 h-4" />
               Market
+            </TabsTrigger>
+            <TabsTrigger value="roadmap" className="flex items-center gap-2">
+              <Leaf className="w-4 h-4 text-emerald-600" />
+              My Farm Roadmap
             </TabsTrigger>
             <TabsTrigger value="solver" className="flex items-center gap-2">
               <Zap className="w-4 h-4" />
@@ -213,6 +218,10 @@ export default function Index() {
 
           <TabsContent value="market">
             <MarketAnalysis />
+          </TabsContent>
+
+          <TabsContent value="roadmap">
+            <FarmRoadmap />
           </TabsContent>
 
           <TabsContent value="solver">
