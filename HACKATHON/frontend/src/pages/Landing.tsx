@@ -164,7 +164,7 @@ export default function Landing() {
         <div className="container mx-auto px-4 py-8 flex flex-col md:flex-row items-center justify-between gap-4 text-base text-gray-600">
           <div className="flex items-center space-x-2">
             <Leaf className="w-5 h-5 text-green-600" />
-            <span>AgriSmart</span>
+            <span>E-Kishan</span>
           </div>
           <a
             href="https://github.com/Rama542/Agri-Smart"
@@ -175,7 +175,7 @@ export default function Landing() {
             <Github className="w-5 h-5" />
             View on GitHub
           </a>
-          <span className="text-sm text-gray-400">© {new Date().getFullYear()} AgriSmart</span>
+          <span className="text-sm text-gray-400">© {new Date().getFullYear()} E-Kishan</span>
         </div>
       </footer>
     </div>

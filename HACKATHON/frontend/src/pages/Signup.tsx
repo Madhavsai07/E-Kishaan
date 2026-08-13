@@ -73,7 +73,7 @@ export default function Signup() {
             <Leaf className="w-6 h-6 text-white" />
           </div>
           <span className="text-3xl font-bold bg-gradient-to-r from-green-700 to-emerald-700 bg-clip-text text-transparent">
-            AgriSmart
+            E-Kishan
           </span>
         </Link>
       </div>
@@ -82,7 +82,7 @@ export default function Signup() {
         <Card className="w-full max-w-lg shadow-lg">
           <CardHeader className="text-center">
             <CardTitle className="text-4xl font-bold text-gray-900">Create your account</CardTitle>
-            <CardDescription className="text-lg">Join AgriSmart and start farming smarter</CardDescription>
+            <CardDescription className="text-lg">Join E-Kishan and start farming smarter</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             {!isSupabaseConfigured && (

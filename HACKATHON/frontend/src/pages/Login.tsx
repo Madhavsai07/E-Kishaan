@@ -76,7 +76,7 @@ export default function Login() {
             <Leaf className="w-6 h-6 text-white" />
           </div>
           <span className="text-3xl font-bold bg-gradient-to-r from-green-700 to-emerald-700 bg-clip-text text-transparent">
-            AgriSmart
+            E-Kishan
           </span>
         </Link>
       </div>
@@ -85,7 +85,7 @@ export default function Login() {
         <Card className="w-full max-w-lg shadow-lg">
           <CardHeader className="text-center">
             <CardTitle className="text-4xl font-bold text-gray-900">Welcome back</CardTitle>
-            <CardDescription className="text-lg">Log in to your AgriSmart account</CardDescription>
+            <CardDescription className="text-lg">Log in to your E-Kishan account</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             {!isSupabaseConfigured && (
