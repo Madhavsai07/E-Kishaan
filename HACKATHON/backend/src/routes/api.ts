@@ -16,9 +16,16 @@ import { solvePotionHandler } from '../controllers/solverController';
 import { getUserStatsHandler, updateUserStatsHandler } from '../controllers/userController';
 import { getCropRecommendationsHandler } from '../controllers/cropController';
 import {
-  getFarmRoadmapHandler,
+  getFarmProfileHandler,
   saveFarmProfileHandler,
+  getFarmDashboardHandler,
+  getTodayTasksHandler,
+  getUpcomingTasksHandler,
+  getTimelineHandler,
+  getSmartAlertsHandler,
+  getDiaryHistoryHandler,
   submitDailyDiaryHandler,
+  getFarmChartsHandler,
   updateTaskStatusHandler,
 } from '../controllers/roadmapController';
 
@@ -49,10 +56,17 @@ router.get('/soil/admin/health', adminHealthHandler);
 // AI Crop Recommendation & Advisory Engine API
 router.get('/crops/recommendation/:district?', getCropRecommendationsHandler);
 
-// AI Personalized Farm Roadmap & Smart Advisory System APIs
-router.get('/farm/roadmap/:district?', getFarmRoadmapHandler);
+// AI Personalized Farm Roadmap & Smart Advisory System REST APIs
+router.get('/farm/profile', getFarmProfileHandler);
 router.post('/farm/profile', saveFarmProfileHandler);
+router.get('/farm/dashboard', getFarmDashboardHandler);
+router.get('/farm/today', getTodayTasksHandler);
+router.get('/farm/upcoming', getUpcomingTasksHandler);
+router.get('/farm/timeline', getTimelineHandler);
+router.get('/farm/alerts', getSmartAlertsHandler);
+router.get('/farm/diary', getDiaryHistoryHandler);
 router.post('/farm/diary', submitDailyDiaryHandler);
+router.get('/farm/charts', getFarmChartsHandler);
 router.post('/farm/task/status', updateTaskStatusHandler);
 
 // Legacy backward compatibility alias

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Dialog,
   DialogContent,
@@ -19,8 +20,6 @@ import {
 import {
   MapPin,
   Calendar,
-  CheckCircle2,
-  AlertTriangle,
   Clock,
   Droplets,
   Zap,
@@ -31,39 +30,70 @@ import {
   Bell,
   BookOpen,
   Send,
-  Plus,
-  Info,
+  BarChart3,
   Layers,
-  ArrowRight,
-  Sun,
-  CloudRain,
   Bot,
+  Filter,
+  CheckCircle2,
+  AlertTriangle,
 } from 'lucide-react';
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  LineChart,
+  Line,
+} from 'recharts';
 import { toast } from '@/components/ui/sonner';
 
 import {
-  fetchFarmRoadmap,
+  getFarmProfile,
   saveFarmProfile,
+  getFarmDashboard,
+  getTodayTasks,
+  getUpcomingTasks,
+  getRoadmapTimeline,
+  getSmartAlerts,
+  getDiaryHistory,
   submitDailyDiary,
+  getFarmCharts,
   updateTaskStatus,
-  FALLBACK_ROADMAP_DATA,
-  FarmRoadmapResponse,
   FarmOnboardingProfile,
+  DashboardMetrics,
   DailyPlannerTask,
-  RoadmapPhase,
+  UpcomingTaskGroup,
+  TimelineMilestone,
   SmartAlert,
   FarmDailyDiary,
+  FarmChartsData,
 } from '@/services/roadmapService';
 import { DEFAULT_DISTRICTS_LIST } from '@/services/soilService';
 
 export default function FarmRoadmap() {
   const [district, setDistrict] = useState<string>('Ludhiana');
-  const [data, setData] = useState<FarmRoadmapResponse>(FALLBACK_ROADMAP_DATA['Ludhiana']);
+  const [fieldFilter, setFieldFilter] = useState<string>('All Fields');
+  const [cropFilter, setCropFilter] = useState<string>('All Crops');
+
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [profile, setProfile] = useState<FarmOnboardingProfile | null>(null);
+  const [dashboard, setDashboard] = useState<DashboardMetrics | null>(null);
+  const [todayTasks, setTodayTasks] = useState<DailyPlannerTask[]>([]);
+  const [upcomingGroups, setUpcomingGroups] = useState<UpcomingTaskGroup[]>([]);
+  const [timeline, setTimeline] = useState<TimelineMilestone[]>([]);
+  const [alerts, setAlerts] = useState<SmartAlert[]>([]);
+  const [diaryHistory, setDiaryHistory] = useState<FarmDailyDiary[]>([]);
+  const [charts, setCharts] = useState<FarmChartsData | null>(null);
+
   const [isOnboardingOpen, setIsOnboardingOpen] = useState<boolean>(false);
   const [isDiaryOpen, setIsDiaryOpen] = useState<boolean>(false);
 
   // Profile Form State
-  const [profileForm, setProfileForm] = useState<FarmOnboardingProfile>(data.profile);
+  const [profileForm, setProfileForm] = useState<Partial<FarmOnboardingProfile>>({});
 
   // Diary Form State
   const [diaryForm, setDiaryForm] = useState<FarmDailyDiary>({
@@ -79,43 +109,80 @@ export default function FarmRoadmap() {
   });
 
   // Assistant Chat State
-  const [chatMessages, setChatMessages] = useState<Array<{ sender: 'user' | 'ai'; text: string }>>([
-    {
-      sender: 'ai',
-      text: `Hello ${data.profile.farmerName}! I am your AI Agricultural Assistant for ${data.profile.district}. How can I guide your ${data.profile.currentCrop} farming today?`,
-    },
-  ]);
+  const [chatMessages, setChatMessages] = useState<Array<{ sender: 'user' | 'ai'; text: string }>>([]);
   const [inputQuery, setInputQuery] = useState<string>('');
 
-  useEffect(() => {
-    async function loadData() {
-      const res = await fetchFarmRoadmap(district);
-      if (res) {
-        setData(res);
-        setProfileForm(res.profile);
+  // Fetch all backend API data dynamically
+  const loadAllBackendData = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const [
+        profRes,
+        dashRes,
+        todayRes,
+        upcomingRes,
+        timelineRes,
+        alertsRes,
+        diaryRes,
+        chartsRes,
+      ] = await Promise.all([
+        getFarmProfile(district),
+        getFarmDashboard(district),
+        getTodayTasks(district),
+        getUpcomingTasks(district),
+        getRoadmapTimeline(district),
+        getSmartAlerts(district),
+        getDiaryHistory(),
+        getFarmCharts(district),
+      ]);
+
+      setProfile(profRes);
+      setProfileForm(profRes);
+      setDashboard(dashRes);
+      setTodayTasks(todayRes);
+      setUpcomingGroups(upcomingRes);
+      setTimeline(timelineRes);
+      setAlerts(alertsRes);
+      setDiaryHistory(diaryRes);
+      setCharts(chartsRes);
+
+      if (chatMessages.length === 0) {
+        setChatMessages([
+          {
+            sender: 'ai',
+            text: `Hello ${profRes.farmerName}! I am your AI Agricultural Assistant for ${profRes.district}. How can I guide your ${profRes.currentCrop} farming today?`,
+          },
+        ]);
       }
+    } catch (err) {
+      console.error('Failed to fetch roadmap API data:', err);
+      toast.error('Error connecting to backend API.');
+    } finally {
+      setIsLoading(false);
     }
-    loadData();
   }, [district]);
+
+  useEffect(() => {
+    loadAllBackendData();
+  }, [loadAllBackendData]);
 
   const handleProfileSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    const ok = await saveFarmProfile(profileForm);
-    if (ok) {
-      toast.success('Farm Profile & Digital Twin updated!');
+    try {
+      await saveFarmProfile(profileForm);
+      toast.success('Farm Profile updated!');
       setIsOnboardingOpen(false);
-      const res = await fetchFarmRoadmap(district);
-      if (res) setData(res);
-    } else {
+      await loadAllBackendData();
+    } catch (err) {
       toast.error('Failed to update profile.');
     }
   };
 
   const handleDiarySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const ok = await submitDailyDiary(diaryForm);
-    if (ok) {
-      toast.success('End-of-Day Check-in recorded! Adaptive roadmap updated.');
+    try {
+      await submitDailyDiary(diaryForm);
+      toast.success('End-of-day check-in recorded! Adaptive roadmap updated.');
       setIsDiaryOpen(false);
       setDiaryForm({
         checkInDate: new Date().toISOString().split('T')[0],
@@ -128,21 +195,19 @@ export default function FarmRoadmap() {
         laborersCount: 2,
         notes: '',
       });
-      const res = await fetchFarmRoadmap(district);
-      if (res) setData(res);
-    } else {
-      toast.error('Failed to submit check-in.');
+      await loadAllBackendData();
+    } catch (err) {
+      toast.error('Failed to submit diary.');
     }
   };
 
   const handleTaskAction = async (taskId: string, status: 'Completed' | 'Skipped' | 'Delayed') => {
-    const ok = await updateTaskStatus(taskId, status);
-    if (ok) {
+    try {
+      await updateTaskStatus(taskId, status);
       toast.success(`Task marked as ${status}! Adaptive plan recalculated.`);
-      setData((prev) => ({
-        ...prev,
-        todayTasks: prev.todayTasks.map((t) => (t.id === taskId ? { ...t, status } : t)),
-      }));
+      await loadAllBackendData();
+    } catch (err) {
+      toast.error('Failed to update task status.');
     }
   };
 
@@ -154,18 +219,15 @@ export default function FarmRoadmap() {
     setChatMessages(newMessages);
     if (!textToSend) setInputQuery('');
 
-    // AI Consultant dynamic logic
     setTimeout(() => {
-      let aiAns = `Based on your ${data.profile.farmSizeAcres} acre ${data.profile.currentCrop} field in ${district}, soil moisture is at ${data.digitalTwin.waterBalancePercent}%. Everything is optimal.`;
+      let aiAns = `Based on backend metrics for ${profile?.farmerName || 'Farmer'}, soil moisture is at ${dashboard?.waterBalancePercent || 80}%. Everything is optimal.`;
       const qLower = q.toLowerCase();
       if (qLower.includes('irrigate') || qLower.includes('water')) {
-        aiAns = `Based on live Open-Meteo weather (${data.weather?.temp || 28.5}°C, ${data.weather?.moisture || 45}% soil moisture), next 30mm irrigation is recommended in 3 days. No immediate rain expected.`;
+        aiAns = `Based on live weather API data for ${district}, next irrigation is recommended in 3 days.`;
       } else if (qLower.includes('fertilizer') || qLower.includes('urea')) {
-        aiAns = `Your crop is currently in the ${data.profile.growthStage}. Apply 25kg/acre Neem-coated Urea top dressing tomorrow early morning to prevent volatilization loss.`;
-      } else if (qLower.includes('today') || qLower.includes('do')) {
-        aiAns = `Today's priority is: 1) Check Field 1 CRI soil moisture, 2) Prepare 25kg/acre Urea for top dressing, 3) Inspect borders for rust spores.`;
-      } else if (qLower.includes('harvest')) {
-        aiAns = `Expected harvest countdown is 90 days (approx September 15, 2026). Target yield is ${data.digitalTwin.expectedYieldTotal}.`;
+        aiAns = `Your crop is currently in ${profile?.growthStage || 'Vegetative Stage'}. Top-dressing Urea application is due.`;
+      } else if (qLower.includes('today')) {
+        aiAns = `Today's priority is: ${todayTasks[0]?.taskName || 'Check Field Moisture'}.`;
       }
 
       setChatMessages((prev) => [...prev, { sender: 'ai', text: aiAns }]);
@@ -179,6 +241,21 @@ export default function FarmRoadmap() {
     return 'bg-emerald-600 text-white';
   };
 
+  if (isLoading && !profile) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-36 w-full rounded-xl bg-slate-200" />
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <Skeleton className="h-28 w-full rounded-xl bg-slate-200" />
+          <Skeleton className="h-28 w-full rounded-xl bg-slate-200" />
+          <Skeleton className="h-28 w-full rounded-xl bg-slate-200" />
+          <Skeleton className="h-28 w-full rounded-xl bg-slate-200" />
+        </div>
+        <Skeleton className="h-64 w-full rounded-xl bg-slate-200" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Top Banner & Profile Header */}
@@ -191,16 +268,16 @@ export default function FarmRoadmap() {
                   AI Digital Farm Twin Active
                 </Badge>
                 <span className="text-emerald-200 text-xs font-semibold">
-                  District: {data.profile.district} • Village: {data.profile.village}
+                  District: {profile?.district} • Village: {profile?.village}
                 </span>
               </div>
               <h1 className="text-3xl font-extrabold text-white flex items-center gap-2">
                 🌾 My Farm Roadmap & Intelligent Advisory
               </h1>
               <p className="text-emerald-100 text-sm">
-                Farmer: <span className="font-bold text-white">{data.profile.farmerName}</span> • Land:{' '}
-                <span className="font-bold text-amber-300">{data.profile.farmSizeAcres} Acres</span> ({data.profile.numFields} Fields) • Crop:{' '}
-                <span className="font-bold text-white">{data.profile.currentCrop}</span>
+                Farmer: <span className="font-bold text-white">{profile?.farmerName}</span> • Land:{' '}
+                <span className="font-bold text-amber-300">{profile?.farmSizeAcres} Acres</span> ({profile?.numFields} Fields) • Crop:{' '}
+                <span className="font-bold text-white">{profile?.currentCrop}</span>
               </p>
             </div>
 
@@ -210,12 +287,12 @@ export default function FarmRoadmap() {
                 <DialogTrigger asChild>
                   <Button className="bg-amber-500 hover:bg-amber-600 text-emerald-950 font-bold shadow-sm">
                     <User className="w-4 h-4 mr-2" />
-                    Edit Farm Profile & Goals
+                    Edit Profile & Goals
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
                   <DialogHeader>
-                    <DialogTitle className="text-2xl font-bold text-emerald-950">Farmer Onboarding & Profile Setup</DialogTitle>
+                    <DialogTitle className="text-2xl font-bold text-emerald-950">Farmer Profile Setup</DialogTitle>
                     <DialogDescription>
                       Customize your farm details to dynamically generate a unique AI Roadmap.
                     </DialogDescription>
@@ -226,7 +303,7 @@ export default function FarmRoadmap() {
                       <div>
                         <Label>Farmer Name</Label>
                         <Input
-                          value={profileForm.farmerName}
+                          value={profileForm.farmerName || ''}
                           onChange={(e) => setProfileForm({ ...profileForm, farmerName: e.target.value })}
                           className="mt-1"
                         />
@@ -234,7 +311,7 @@ export default function FarmRoadmap() {
                       <div>
                         <Label>District</Label>
                         <select
-                          value={profileForm.district}
+                          value={profileForm.district || district}
                           onChange={(e) => {
                             setProfileForm({ ...profileForm, district: e.target.value });
                             setDistrict(e.target.value);
@@ -254,7 +331,7 @@ export default function FarmRoadmap() {
                       <div>
                         <Label>Village</Label>
                         <Input
-                          value={profileForm.village}
+                          value={profileForm.village || ''}
                           onChange={(e) => setProfileForm({ ...profileForm, village: e.target.value })}
                           className="mt-1"
                         />
@@ -263,7 +340,7 @@ export default function FarmRoadmap() {
                         <Label>Total Land Area (Acres)</Label>
                         <Input
                           type="number"
-                          value={profileForm.farmSizeAcres}
+                          value={profileForm.farmSizeAcres || 5}
                           onChange={(e) => setProfileForm({ ...profileForm, farmSizeAcres: parseFloat(e.target.value) || 1 })}
                           className="mt-1"
                         />
@@ -274,7 +351,7 @@ export default function FarmRoadmap() {
                       <div>
                         <Label>Current Crop</Label>
                         <Input
-                          value={profileForm.currentCrop}
+                          value={profileForm.currentCrop || ''}
                           onChange={(e) => setProfileForm({ ...profileForm, currentCrop: e.target.value })}
                           className="mt-1"
                         />
@@ -282,28 +359,8 @@ export default function FarmRoadmap() {
                       <div>
                         <Label>Growth Stage</Label>
                         <Input
-                          value={profileForm.growthStage}
+                          value={profileForm.growthStage || ''}
                           onChange={(e) => setProfileForm({ ...profileForm, growthStage: e.target.value })}
-                          className="mt-1"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label>Irrigation Source</Label>
-                        <Input
-                          value={profileForm.irrigationSource}
-                          onChange={(e) => setProfileForm({ ...profileForm, irrigationSource: e.target.value })}
-                          className="mt-1"
-                        />
-                      </div>
-                      <div>
-                        <Label>Planting Date</Label>
-                        <Input
-                          type="date"
-                          value={profileForm.plantingDate}
-                          onChange={(e) => setProfileForm({ ...profileForm, plantingDate: e.target.value })}
                           className="mt-1"
                         />
                       </div>
@@ -311,7 +368,7 @@ export default function FarmRoadmap() {
 
                     <DialogFooter className="mt-4">
                       <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white w-full">
-                        Save Profile & Regenerate AI Roadmap
+                        Save Profile & Refresh Backend Roadmap
                       </Button>
                     </DialogFooter>
                   </form>
@@ -415,72 +472,128 @@ export default function FarmRoadmap() {
         </CardContent>
       </Card>
 
+      {/* Dynamic Interactive Filter Toolbar */}
+      <Card className="shadow-sm bg-slate-50 border-slate-200">
+        <CardContent className="p-4 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-emerald-600" />
+            <span className="font-bold text-sm text-gray-800">Dynamic API Filters:</span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-1.5">
+              <Label className="text-xs font-semibold text-gray-600">District:</Label>
+              <select
+                value={district}
+                onChange={(e) => setDistrict(e.target.value)}
+                className="px-2.5 py-1 bg-white border border-gray-300 rounded text-xs font-bold text-gray-900"
+              >
+                {DEFAULT_DISTRICTS_LIST.map((d) => (
+                  <option key={d.name} value={d.name}>{d.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <Label className="text-xs font-semibold text-gray-600">Field:</Label>
+              <select
+                value={fieldFilter}
+                onChange={(e) => setFieldFilter(e.target.value)}
+                className="px-2.5 py-1 bg-white border border-gray-300 rounded text-xs font-medium text-gray-900"
+              >
+                <option value="All Fields">All Fields</option>
+                <option value="Field 1">Field 1 (Front Plot)</option>
+                <option value="Field 2">Field 2 (Canal Side)</option>
+              </select>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <Label className="text-xs font-semibold text-gray-600">Crop:</Label>
+              <select
+                value={cropFilter}
+                onChange={(e) => setCropFilter(e.target.value)}
+                className="px-2.5 py-1 bg-white border border-gray-300 rounded text-xs font-medium text-gray-900"
+              >
+                <option value="All Crops">All Crops</option>
+                <option value="Wheat">Wheat</option>
+                <option value="Paddy">Paddy</option>
+                <option value="Mustard">Mustard</option>
+              </select>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Digital Farm Twin Overview Metric Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="border-t-4 border-t-blue-500 shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600 flex items-center justify-between">
-              Soil Water Balance
-              <Droplets className="w-4 h-4 text-blue-600" />
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-gray-900">{data.digitalTwin.waterBalancePercent}%</div>
-            <Progress value={data.digitalTwin.waterBalancePercent} className="h-2 mt-2 bg-gray-200" />
-            <p className="text-xs text-gray-500 mt-1">Optimal zone: 60-85%</p>
-          </CardContent>
-        </Card>
+      {dashboard && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card className="border-t-4 border-t-blue-500 shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600 flex items-center justify-between">
+                Soil Water Balance
+                <Droplets className="w-4 h-4 text-blue-600" />
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-gray-900">{dashboard.waterBalancePercent}%</div>
+              <Progress value={dashboard.waterBalancePercent} className="h-2 mt-2 bg-gray-200" />
+              <p className="text-xs text-gray-500 mt-1">{dashboard.weatherSummary}</p>
+            </CardContent>
+          </Card>
 
-        <Card className="border-t-4 border-t-emerald-500 shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600 flex items-center justify-between">
-              Nutrient Availability
-              <Zap className="w-4 h-4 text-emerald-600" />
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-gray-900">{data.digitalTwin.nutrientBalancePercent}%</div>
-            <Progress value={data.digitalTwin.nutrientBalancePercent} className="h-2 mt-2 bg-gray-200" />
-            <p className="text-xs text-gray-500 mt-1">N, P, K & Micronutrient index</p>
-          </CardContent>
-        </Card>
+          <Card className="border-t-4 border-t-emerald-500 shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600 flex items-center justify-between">
+                Nutrient Availability
+                <Zap className="w-4 h-4 text-emerald-600" />
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-gray-900">{dashboard.nutrientBalancePercent}%</div>
+              <Progress value={dashboard.nutrientBalancePercent} className="h-2 mt-2 bg-gray-200" />
+              <p className="text-xs text-gray-500 mt-1">{dashboard.soilSummary}</p>
+            </CardContent>
+          </Card>
 
-        <Card className="border-t-4 border-t-amber-500 shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600 flex items-center justify-between">
-              Expected Total Yield
-              <TrendingUp className="w-4 h-4 text-amber-600" />
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-xl font-bold text-amber-900">{data.digitalTwin.expectedYieldTotal}</div>
-            <p className="text-xs text-gray-500 mt-1">Target yield met (+12% optimization)</p>
-          </CardContent>
-        </Card>
+          <Card className="border-t-4 border-t-amber-500 shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600 flex items-center justify-between">
+                Expected Total Yield
+                <TrendingUp className="w-4 h-4 text-amber-600" />
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-xl font-bold text-amber-900">{dashboard.yieldPrediction}</div>
+              <p className="text-xs text-gray-500 mt-1">AI Confidence: {dashboard.aiConfidence}%</p>
+            </CardContent>
+          </Card>
 
-        <Card className="border-t-4 border-t-purple-500 shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600 flex items-center justify-between">
-              Expected Net Profit
-              <ShieldCheck className="w-4 h-4 text-purple-600" />
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-purple-900">{data.digitalTwin.expectedProfitTotal}</div>
-            <p className="text-xs text-gray-500 mt-1">
-              Harvest Countdown: <span className="font-bold text-purple-700">{data.digitalTwin.harvestCountdownDays} days</span>
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+          <Card className="border-t-4 border-t-purple-500 shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-gray-600 flex items-center justify-between">
+                Expected Net Profit
+                <ShieldCheck className="w-4 h-4 text-purple-600" />
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-purple-900">{dashboard.profitPrediction}</div>
+              <p className="text-xs text-gray-500 mt-1">
+                Harvest Countdown: <span className="font-bold text-purple-700">{dashboard.harvestCountdownDays} days</span>
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
-      {/* Dynamic Sections: Daily Planner, Smart Alerts, 14-Phase Timeline & AI Assistant */}
+      {/* Dynamic Sections: Daily Planner, Upcoming, Timeline, Alerts, Charts & AI Assistant */}
       <Tabs defaultValue="planner" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="planner">Today's Farm Plan</TabsTrigger>
+          <TabsTrigger value="upcoming">Upcoming Tasks</TabsTrigger>
           <TabsTrigger value="alerts">AI Smart Alerts</TabsTrigger>
-          <TabsTrigger value="timeline">14-Phase Lifecycle Timeline</TabsTrigger>
-          <TabsTrigger value="assistant">AI Farm Assistant</TabsTrigger>
+          <TabsTrigger value="timeline">Roadmap Timeline</TabsTrigger>
+          <TabsTrigger value="charts">API Charts</TabsTrigger>
+          <TabsTrigger value="assistant">AI Assistant</TabsTrigger>
         </TabsList>
 
         {/* Today's Farm Plan Tab */}
@@ -491,125 +604,164 @@ export default function FarmRoadmap() {
                 <div>
                   <CardTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
                     <Calendar className="w-5 h-5 text-emerald-600" />
-                    Today's Actionable Farm Plan ({new Date().toLocaleDateString('en-IN', { weekday: 'long', month: 'short', day: 'numeric' })})
+                    Today's Actionable Farm Plan (`GET /api/farm/today`)
                   </CardTitle>
                   <CardDescription>
-                    Tailored specifically for {data.profile.currentCrop} in {data.profile.district} based on live weather and growth stage
+                    Fetched dynamically for {profile?.currentCrop} in {district}
                   </CardDescription>
                 </div>
-                <Badge className="bg-emerald-700 text-white font-bold">{data.todayTasks.length} Tasks Scheduled</Badge>
+                <Badge className="bg-emerald-700 text-white font-bold">{todayTasks.length} Tasks Returned</Badge>
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              {data.todayTasks.map((t) => (
-                <div key={t.id} className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <Badge className={getPriorityColor(t.priority)}>{t.priority} Priority</Badge>
-                      <h4 className="font-bold text-gray-900 text-base">{t.taskName}</h4>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="border-gray-300 text-gray-700">
-                        <Clock className="w-3 h-3 mr-1" /> {t.duration}
-                      </Badge>
-                      <Badge variant="outline" className="border-emerald-500 text-emerald-800">
-                        Due: {t.deadline}
-                      </Badge>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs bg-white p-3 border rounded-lg">
-                    <div>
-                      <span className="font-semibold text-gray-700">AI Context & Reason:</span>
-                      <p className="text-gray-600 mt-0.5">{t.reason}</p>
-                    </div>
-                    <div>
-                      <span className="font-semibold text-emerald-800">Expected Benefit:</span>
-                      <p className="text-emerald-700 mt-0.5">{t.expectedBenefit}</p>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-                    <div className="text-xs text-red-600 font-medium">
-                      ⚠️ Consequence if skipped: {t.consequenceIfSkipped}
+              {todayTasks.length === 0 ? (
+                <div className="p-8 text-center text-gray-500">No active tasks for today. Check back tomorrow!</div>
+              ) : (
+                todayTasks.map((t) => (
+                  <div key={t.id} className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Badge className={getPriorityColor(t.priority)}>{t.priority} Priority</Badge>
+                        <h4 className="font-bold text-gray-900 text-base">{t.taskName}</h4>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="border-gray-300 text-gray-700">
+                          <Clock className="w-3 h-3 mr-1" /> {t.estimatedTime}
+                        </Badge>
+                        <Badge variant="outline" className="border-emerald-500 text-emerald-800">
+                          Due: {t.deadline}
+                        </Badge>
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      {t.status === 'Completed' ? (
-                        <Badge className="bg-emerald-600">✓ Completed</Badge>
-                      ) : (
-                        <>
-                          <Button
-                            size="sm"
-                            onClick={() => handleTaskAction(t.id, 'Completed')}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-xs"
-                          >
-                            Mark Done
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleTaskAction(t.id, 'Skipped')}
-                            className="text-gray-600 hover:bg-gray-100 font-medium text-xs"
-                          >
-                            Skip
-                          </Button>
-                        </>
-                      )}
+                    <p className="text-xs text-gray-600">{t.description}</p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs bg-white p-3 border rounded-lg">
+                      <div>
+                        <span className="font-semibold text-gray-700">AI Context & Reason:</span>
+                        <p className="text-gray-600 mt-0.5">{t.reason}</p>
+                      </div>
+                      <div>
+                        <span className="font-semibold text-emerald-800">Expected Benefit:</span>
+                        <p className="text-emerald-700 mt-0.5">{t.benefits}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                      <div className="text-xs text-red-600 font-medium">
+                        ⚠️ Consequence if skipped: {t.risk}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {t.status === 'Completed' ? (
+                          <Badge className="bg-emerald-600">✓ Completed</Badge>
+                        ) : (
+                          <>
+                            <Button
+                              size="sm"
+                              onClick={() => handleTaskAction(t.id, 'Completed')}
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-xs"
+                            >
+                              Mark Completed
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleTaskAction(t.id, 'Skipped')}
+                              className="text-gray-600 hover:bg-gray-100 font-medium text-xs"
+                            >
+                              Skip
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleTaskAction(t.id, 'Delayed')}
+                              className="text-amber-700 border-amber-300 hover:bg-amber-50 font-medium text-xs"
+                            >
+                              Delay
+                            </Button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Upcoming Tasks Tab */}
+        <TabsContent value="upcoming" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-xl font-bold text-gray-900">
+                Upcoming Roadmap Tasks (`GET /api/farm/upcoming`)
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {upcomingGroups.map((g) => (
+                <div key={g.groupName} className="space-y-3">
+                  <h3 className="font-bold text-lg text-emerald-950 flex items-center gap-2 border-b pb-1">
+                    <Calendar className="w-4 h-4 text-emerald-600" />
+                    {g.groupName}
+                  </h3>
+                  {g.tasks.map((t) => (
+                    <div key={t.id} className="p-3 bg-white border rounded-lg space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Badge className={getPriorityColor(t.priority)}>{t.priority}</Badge>
+                          <span className="font-bold text-gray-900 text-sm">{t.taskName}</span>
+                        </div>
+                        <span className="text-xs text-emerald-700 font-semibold">{t.deadline}</span>
+                      </div>
+                      <p className="text-xs text-gray-600">{t.reason}</p>
+                    </div>
+                  ))}
                 </div>
               ))}
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* AI Smart Alerts Tab */}
+        {/* Smart Alerts Tab */}
         <TabsContent value="alerts" className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
                 <Bell className="w-5 h-5 text-amber-500" />
-                Intelligent Alerts & Context-Aware Reminders
+                AI Smart Alerts (`GET /api/farm/alerts`)
               </CardTitle>
-              <CardDescription>
-                Continuously evaluated against live Open-Meteo weather, soil health, and growth stage
-              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {data.smartAlerts.map((a) => (
+              {alerts.map((a) => (
                 <div
                   key={a.id}
                   className={`p-4 border rounded-xl space-y-2 ${
-                    a.priority === 'Critical'
+                    a.severity === 'Critical'
                       ? 'bg-red-50/70 border-red-200'
-                      : a.priority === 'High'
+                      : a.severity === 'High'
                       ? 'bg-amber-50/70 border-amber-200'
                       : 'bg-blue-50/70 border-blue-200'
                   }`}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <Badge className={getPriorityColor(a.priority)}>{a.category}</Badge>
+                      <Badge className={getPriorityColor(a.severity)}>{a.severity}</Badge>
                       <h4 className="font-bold text-gray-900 text-base">{a.title}</h4>
                     </div>
-                    <span className="text-xs text-gray-500">{a.timestamp}</span>
+                    <span className="text-xs text-gray-500">{a.generatedTime}</span>
                   </div>
 
-                  <div className="text-sm space-y-1">
+                  <div className="text-xs space-y-1">
                     <div>
-                      <strong className="text-gray-900">Why did I receive this alert?</strong>
-                      <p className="text-gray-700 text-xs">{a.reason}</p>
+                      <strong className="text-gray-900">Why:</strong> {a.reason}
                     </div>
-
                     <div>
-                      <strong className="text-emerald-900">Recommended Action:</strong>
-                      <p className="text-emerald-800 text-xs font-medium">{a.recommendedAction}</p>
+                      <strong className="text-emerald-900">Recommended Action:</strong> {a.recommendedAction}
                     </div>
-
                     <div>
-                      <strong className="text-red-900">What happens if ignored?</strong>
-                      <p className="text-red-700 text-xs">{a.consequenceIfIgnored}</p>
+                      <strong className="text-red-900">What happens if ignored:</strong> {a.impact}
                     </div>
                   </div>
                 </div>
@@ -618,75 +770,57 @@ export default function FarmRoadmap() {
           </Card>
         </TabsContent>
 
-        {/* 14-Phase Lifecycle Timeline Tab */}
+        {/* 14-Phase Timeline Tab */}
         <TabsContent value="timeline" className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
                 <Layers className="w-5 h-5 text-emerald-600" />
-                Full 14-Phase Farming Lifecycle Roadmap
+                14-Phase Adaptive Lifecycle Timeline (`GET /api/farm/timeline`)
               </CardTitle>
-              <CardDescription>
-                From Land Preparation to Market Selling for {data.profile.currentCrop}
-              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="relative border-l-2 border-emerald-300 ml-4 space-y-6 pl-6 py-2">
-                {data.phases.map((p) => (
-                  <div key={p.phaseNumber} className="relative group">
+                {timeline.map((p) => (
+                  <div key={p.timelineId} className="relative group">
                     <div
                       className={`absolute -left-[31px] top-1 w-5 h-5 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-bold text-white ${
-                        p.status === 'Completed'
+                        p.currentStatus === 'Completed'
                           ? 'bg-emerald-600'
-                          : p.status === 'In Progress'
+                          : p.currentStatus === 'In Progress'
                           ? 'bg-amber-500 animate-pulse'
                           : 'bg-slate-400'
                       }`}
                     >
-                      {p.phaseNumber}
+                      {p.stageNumber}
                     </div>
 
                     <div className="p-4 bg-white border border-gray-200 rounded-xl hover:shadow-md transition-all space-y-2">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
                           <h4 className="font-bold text-gray-900 text-lg">
-                            Phase {p.phaseNumber}: {p.phaseName}
+                            Phase {p.stageNumber}: {p.stageName}
                           </h4>
                           <Badge
                             className={
-                              p.status === 'Completed'
+                              p.currentStatus === 'Completed'
                                 ? 'bg-emerald-600'
-                                : p.status === 'In Progress'
+                                : p.currentStatus === 'In Progress'
                                 ? 'bg-amber-500'
                                 : 'bg-slate-500'
                             }
                           >
-                            {p.status}
+                            {p.currentStatus}
                           </Badge>
                         </div>
                         <span className="text-xs text-gray-500 font-medium">
-                          {p.expectedStartDate} → {p.expectedEndDate}
+                          {p.startDate} → {p.endDate}
                         </span>
                       </div>
 
                       <p className="text-xs text-gray-700 font-medium">
-                        <strong>AI Strategy:</strong> {p.aiRecommendation}
+                        <strong>AI Strategy:</strong> {p.aiNotes}
                       </p>
-
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs bg-slate-50 p-2.5 rounded-lg border">
-                        <div>
-                          <span className="text-gray-500">Est. Cost:</span>{' '}
-                          <strong className="text-gray-900">{p.estimatedCost}</strong>
-                        </div>
-                        <div>
-                          <span className="text-gray-500">Expected Benefit:</span>{' '}
-                          <strong className="text-emerald-700">{p.expectedReturn}</strong>
-                        </div>
-                        <div>
-                          <span className="text-gray-500">Phase Progress:</span>{' '}
-                          <strong className="text-blue-700">{p.progressPercent}%</strong>
-                        </div>
-                      </div>
                     </div>
                   </div>
                 ))}
@@ -695,7 +829,60 @@ export default function FarmRoadmap() {
           </Card>
         </TabsContent>
 
-        {/* AI Farm Assistant Tab */}
+        {/* API Charts Tab */}
+        <TabsContent value="charts" className="space-y-4">
+          {charts && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <BarChart3 className="w-5 h-5 text-emerald-600" />
+                    Task Completion Trend (`GET /api/farm/charts`)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={charts.taskCompletionTrend}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="month" />
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        <Bar dataKey="completed" fill="#059669" name="Completed" />
+                        <Bar dataKey="target" fill="#94a3b8" name="Target" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5 text-amber-600" />
+                    Yield Prediction Trend (quintals/acre)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={charts.yieldForecastTrend}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="stage" />
+                        <YAxis />
+                        <Tooltip />
+                        <Line type="monotone" dataKey="yieldQ" stroke="#d97706" strokeWidth={3} name="Predicted Yield (q/acre)" />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+        </TabsContent>
+
+        {/* AI Assistant Tab */}
         <TabsContent value="assistant" className="space-y-4">
           <Card>
             <CardHeader>
@@ -703,40 +890,8 @@ export default function FarmRoadmap() {
                 <Bot className="w-5 h-5 text-emerald-600" />
                 AI Agricultural Scientist Assistant
               </CardTitle>
-              <CardDescription>
-                Ask any question about your farm profile, weather alerts, or fertilizer schedule
-              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Quick Prompt Buttons */}
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleSendMessage('What should I do today?')}
-                  className="text-xs border-emerald-300 text-emerald-800"
-                >
-                  What should I do today?
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleSendMessage('When should I irrigate?')}
-                  className="text-xs border-emerald-300 text-emerald-800"
-                >
-                  When should I irrigate?
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleSendMessage('Should I apply fertilizer now?')}
-                  className="text-xs border-emerald-300 text-emerald-800"
-                >
-                  Should I apply fertilizer now?
-                </Button>
-              </div>
-
-              {/* Chat Box */}
               <div className="h-64 overflow-y-auto border rounded-xl p-4 bg-slate-50 space-y-3">
                 {chatMessages.map((m, idx) => (
                   <div
@@ -756,7 +911,6 @@ export default function FarmRoadmap() {
                 ))}
               </div>
 
-              {/* Input Form */}
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
