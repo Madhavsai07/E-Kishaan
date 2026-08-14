@@ -1,5 +1,8 @@
 import { PUNJAB_DATASET_FALLBACK } from './soilService';
 import { computeCropRecommendations } from './cropOfflineEngine';
+import { getDiseaseRisks, DiseaseRisk } from '@/lib/diseaseRules';
+
+export type { DiseaseRisk };
 
 export interface CropFactors {
   soilMatch: number;
@@ -36,6 +39,7 @@ export interface CropRecommendation {
   factors: CropFactors;
   /** Per-crop growth-stage timeline, sized proportionally from this crop's actual growing-days. */
   growthStages: GrowthStage[];
+  diseaseRisks?: DiseaseRisk[];
 }
 
 export interface CropRecommendationResponse {
@@ -62,6 +66,16 @@ export interface CropRecommendationResponse {
 
 const API_BASE = '/api/crops';
 
+function withDiseaseRisks(data: CropRecommendationResponse): CropRecommendationResponse {
+  return {
+    ...data,
+    recommendations: (data.recommendations || []).map((c) => ({
+      ...c,
+      diseaseRisks: getDiseaseRisks(c.crop, data.weather, data.soilHealth.nitrogen),
+    })),
+  };
+}
+
 /**
  * Fetches AI crop recommendations for a district. Tries the live backend
  * first (real soil data + live Open-Meteo weather). If it's unreachable —
@@ -69,7 +83,9 @@ const API_BASE = '/api/crops';
  * falls back to computing the same scoring model locally
  * (cropOfflineEngine.ts) from the district's curated soil baseline, so the
  * page always shows a real, per-district-computed result instead of an
- * error. The response always says which source produced it.
+ * error. The response always says which source produced it. Either way,
+ * each recommendation is annotated with rule-based disease/pest risk from
+ * the current weather and soil nitrogen (see lib/diseaseRules.ts).
  */
 export async function fetchCropRecommendations(district: string): Promise<CropRecommendationResponse> {
   try {
@@ -77,7 +93,7 @@ export async function fetchCropRecommendations(district: string): Promise<CropRe
     if (!res.ok) throw new Error(`HTTP error ${res.status}`);
     const data = await res.json();
     if (data.success && Array.isArray(data.recommendations) && data.recommendations.length > 0) {
-      return { ...(data as CropRecommendationResponse), source: 'live' };
+      return withDiseaseRisks({ ...(data as CropRecommendationResponse), source: 'live' });
     }
     throw new Error('Malformed response from crop recommendation engine');
   } catch (error) {
@@ -85,6 +101,6 @@ export async function fetchCropRecommendations(district: string): Promise<CropRe
     const matchKey =
       Object.keys(PUNJAB_DATASET_FALLBACK).find((k) => k.toLowerCase() === district.toLowerCase()) || 'Ludhiana';
     const geo = PUNJAB_DATASET_FALLBACK[matchKey];
-    return { ...computeCropRecommendations(geo), source: 'estimated' };
+    return withDiseaseRisks({ ...computeCropRecommendations(geo), source: 'estimated' });
   }
 }
