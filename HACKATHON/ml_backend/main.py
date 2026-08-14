@@ -98,11 +98,15 @@ from routers.market import router as market_router
 from routers.soil_ai import router as soil_router
 from routers.crop_ai import router as crop_router
 from routers.roadmap_ai import router as roadmap_router
+from routers.roadmap_engine import router as roadmap_engine_router
+from routers.journal_engine import router as journal_engine_router
 
 app.include_router(market_router, prefix="/api")
 app.include_router(soil_router, prefix="/api")
 app.include_router(crop_router)
 app.include_router(roadmap_router)
+app.include_router(roadmap_engine_router)
+app.include_router(journal_engine_router)
 
 # ─── Root & Health ────────────────────────────────────────────────────────────
 
