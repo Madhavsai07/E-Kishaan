@@ -1,835 +1,743 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { useQuery } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
-  TrendingUp, TrendingDown, Minus, DollarSign, Calendar, Target,
-  AlertCircle, RefreshCw, Wifi, WifiOff, Brain, Clock,
-  BarChart3, ShieldCheck, Sparkles, Info,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  Clock,
+  AlertCircle,
+  IndianRupee,
+  Store,
+  CalendarClock,
+  ShieldAlert,
+  Pencil,
+  CheckCircle2,
+  PiggyBank,
+  ReceiptText,
+  Wallet,
+  BarChart3,
 } from 'lucide-react';
-import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell,
-  ReferenceLine, Area, AreaChart, Legend, ComposedChart,
-} from 'recharts';
-import { useUserStats } from '@/contexts/UserStatsContext';
-import {
-  fetchMarketData, checkMLBackendHealth, buildCombinedChartData, triggerModelRefresh,
-  type MarketData, type CropSummary, type ForecastPoint,
-} from '@/services/marketService';
+import { fetchMarketPrices, getMandiComparison, getUpcomingFestivals, type CropPriceInfo } from '@/services/marketService';
 
-// ─── Auto-refresh interval (30 minutes) ──────────────────────────────────────
-const AUTO_REFRESH_MS = 30 * 60 * 1000;
+// ─── Props ────────────────────────────────────────────────────────────────────
+interface MarketAnalysisProps {
+  /** Farmer's crops from their profile, e.g. ['Rice', 'Coconut', 'Pepper'] */
+  primaryCrops?: string[];
+  /** Optional state for narrowing mandi search, e.g. 'Kerala' */
+  state?: string;
+}
 
-// ─── Tooltip Formatters ───────────────────────────────────────────────────────
-const CROP_UNITS: Record<string, string> = {
-  rice: 'quintal',
-  coconut: 'piece',
-  pepper: 'kg',
-};
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function confidenceLabel(c: CropPriceInfo['forecastConfidence']) {
+  if (c === 'high')   return { label: 'High confidence',    color: 'bg-green-100 text-green-800' };
+  if (c === 'medium') return { label: 'Seasonal estimate',  color: 'bg-blue-100 text-blue-800'   };
+  return               { label: 'Rough estimate',           color: 'bg-orange-100 text-orange-800' };
+}
 
-const formatINR = (amount: number) =>
-  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
+function trendIcon(trend: CropPriceInfo['trend']) {
+  if (trend === 'up')   return <TrendingUp  className="w-4 h-4 text-green-500" />;
+  if (trend === 'down') return <TrendingDown className="w-4 h-4 text-red-500"  />;
+  return                       <Minus        className="w-4 h-4 text-gray-400" />;
+}
 
-// ─── Custom Tooltip ───────────────────────────────────────────────────────────
-const PriceTooltip = ({
-  active,
-  payload,
-  label,
-  activeAxis,
-}: {
-  active?: boolean;
-  payload?: Array<{ name: string; value: number; color: string; dataKey: string }>;
-  label?: string;
-  activeAxis?: 'left' | 'right' | null;
-}) => {
-  if (!active || !payload?.length) return null;
+function adviceColor(advice: CropPriceInfo['sellAdvice']) {
+  if (advice === 'sell_now') return 'border-blue-300  bg-blue-50';
+  if (advice === 'wait_7')   return 'border-amber-300 bg-amber-50';
+  return                            'border-green-300 bg-green-50';
+}
 
-  // Filter out the confidence bands and filter by active axis if hovered
-  const cleanPayload = payload.filter((p) => {
-    if (p.dataKey.includes('_upper') || p.dataKey.includes('_lower')) return false;
-    if (activeAxis) {
-      const isCoconut = p.name.toLowerCase().includes('coconut');
-      if (activeAxis === 'right' && !isCoconut) return false;
-      if (activeAxis === 'left' && isCoconut) return false;
-    }
-    return true;
-  });
+function adviceEmoji(advice: CropPriceInfo['sellAdvice']) {
+  if (advice === 'sell_now') return '💰';
+  if (advice === 'wait_7')   return '⏳';
+  return '📦';
+}
 
-  if (cleanPayload.length === 0) return null;
+function adviceHeadline(advice: CropPriceInfo['sellAdvice']) {
+  if (advice === 'sell_now') return 'Sell now';
+  if (advice === 'wait_7')   return 'Wait about 7 days';
+  return 'Consider waiting ~14 days';
+}
 
+// ─── Skeleton loader ──────────────────────────────────────────────────────────
+function CropCardSkeleton() {
   return (
-    <div className="bg-white border border-gray-200 rounded-xl shadow-xl p-3 text-sm min-w-[200px]">
-      <p className="font-semibold text-gray-700 mb-2 border-b pb-1">{label}</p>
-      {cleanPayload.map((entry, i) => (
-        <div key={i} className="flex items-center justify-between mb-1">
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full" style={{ background: entry.color }} />
-            <span className="text-gray-500 capitalize">{entry.name.replace(' (Forecast)', '')}</span>
-          </div>
-          <span className="font-bold text-gray-800 ml-4">₹{entry.value?.toLocaleString('en-IN')}</span>
-        </div>
+    <Card className="animate-pulse">
+      <CardHeader className="pb-2">
+        <Skeleton className="h-5 w-28" />
+      </CardHeader>
+      <CardContent className="space-y-2">
+        <Skeleton className="h-8 w-36" />
+        <Skeleton className="h-4 w-48" />
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Price Trends Tab ─────────────────────────────────────────────────────────
+// Shows current mandi price and where the market stands this month
+function PriceTrendsTab({ data }: { data: CropPriceInfo[] }) {
+  return (
+    <div className="space-y-4">
+      {data.map((crop) => (
+        <Card key={crop.cropName} className="overflow-hidden">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <IndianRupee className="w-5 h-5 text-green-600" />
+                {crop.cropName}
+              </CardTitle>
+              <Badge variant="outline" className="flex items-center gap-1">
+                {trendIcon(crop.trend)}
+                {crop.priceChange > 0 ? '+' : ''}{crop.priceChange}% this month
+              </Badge>
+            </div>
+            <CardDescription className="flex items-center gap-1 text-sm">
+              <Store className="w-3.5 h-3.5" />
+              {crop.market} · Season: {crop.lastUpdated}
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent>
+            {/* Price block */}
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              <div className="rounded-lg bg-gray-50 p-3 text-center">
+                <p className="text-xs text-gray-500 mb-1">Lowest price</p>
+                <p className="text-lg font-semibold text-gray-700">
+                  ₹{crop.minPrice.toLocaleString('en-IN')}
+                </p>
+              </div>
+              <div className="rounded-lg bg-green-50 border border-green-200 p-3 text-center">
+                <p className="text-xs text-green-700 font-medium mb-1">Mandi price today</p>
+                <p className="text-2xl font-bold text-green-700">
+                  ₹{crop.currentPrice.toLocaleString('en-IN')}
+                </p>
+                <p className="text-xs text-gray-500">per {crop.unit}</p>
+              </div>
+              <div className="rounded-lg bg-gray-50 p-3 text-center">
+                <p className="text-xs text-gray-500 mb-1">Highest price</p>
+                <p className="text-lg font-semibold text-gray-700">
+                  ₹{crop.maxPrice.toLocaleString('en-IN')}
+                </p>
+              </div>
+            </div>
+
+            {/* Plain-language explanation */}
+            <div className="text-sm text-gray-600 bg-gray-50 rounded-lg p-3">
+              {crop.trend === 'up' && (
+                <p>📈 Prices for {crop.cropName} have gone <strong>up</strong> compared to last month. The market is buying well right now.</p>
+              )}
+              {crop.trend === 'down' && (
+                <p>📉 Prices for {crop.cropName} have come <strong>down</strong> a little this month. Arrivals at the mandi are higher than demand.</p>
+              )}
+              {crop.trend === 'stable' && (
+                <p>➡️ Prices for {crop.cropName} are <strong>steady</strong> this month. No big changes seen at the mandi.</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       ))}
     </div>
   );
-};
+}
 
-// ─── Loading Skeleton ─────────────────────────────────────────────────────────
-const PulseBox = ({ className = '' }: { className?: string }) => (
-  <div className={`animate-pulse bg-gray-200 rounded-lg ${className}`} />
-);
-
-const LoadingSkeleton = () => (
-  <div className="space-y-6">
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      {[1, 2, 3].map((i) => <PulseBox key={i} className="h-28" />)}
-    </div>
-    <PulseBox className="h-14" />
-    <PulseBox className="h-80" />
-  </div>
-);
-
-// ─── Backend Status Badge ─────────────────────────────────────────────────────
-const BackendStatusBadge = ({ isOnline, isLoading }: { isOnline: boolean | null; isLoading: boolean }) => {
-  if (isLoading || isOnline === null) {
-    return (
-      <Badge variant="outline" className="text-xs gap-1 animate-pulse">
-        <RefreshCw className="w-3 h-3 animate-spin" /> Connecting…
-      </Badge>
-    );
-  }
-  if (isOnline) {
-    return (
-      <Badge className="text-xs gap-1 bg-emerald-500 hover:bg-emerald-600">
-        <Wifi className="w-3 h-3" /> ML Backend Live
-      </Badge>
-    );
-  }
-  return (
-    <Badge variant="destructive" className="text-xs gap-1">
-      <WifiOff className="w-3 h-3" /> Backend Offline
-    </Badge>
-  );
-};
-
-// ─── Recommendation Card ──────────────────────────────────────────────────────
-const RecommendationCard = ({
-  rec,
-}: {
-  rec: MarketData['recommendations'][0];
-}) => {
-  const typeConfig = {
-    hold: { bg: 'bg-amber-50 border-amber-200', icon: '⏳', color: 'text-amber-700', label: 'Hold Recommendation' },
-    sell_now: { bg: 'bg-blue-50 border-blue-200', icon: '💰', color: 'text-blue-700', label: 'Sell Now' },
-    stable: { bg: 'bg-gray-50 border-gray-200', icon: '📊', color: 'text-gray-700', label: 'Stable Market' },
-  };
-  const cfg = typeConfig[rec.type] || typeConfig.stable;
-
-  return (
-    <div className={`p-4 rounded-lg border ${cfg.bg}`}>
-      <div className="flex items-start gap-3">
-        <span className="text-2xl">{cfg.icon}</span>
-        <div className="flex-1">
-          <div className="flex items-center justify-between mb-1">
-            <h4 className={`font-semibold text-sm ${cfg.color}`}>{cfg.label} — {rec.crop}</h4>
-            <Badge variant="outline" className="text-xs">
-              {Math.round(rec.confidence * 100)}% confidence
-            </Badge>
-          </div>
-          <p className={`text-xs ${cfg.color} opacity-90`}>{rec.message}</p>
-          <p className="text-xs text-gray-500 mt-1">
-            Peak: ₹{rec.peak_price.toLocaleString('en-IN')} in {rec.peak_month}
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// ─── Main Component ───────────────────────────────────────────────────────────
-export default function MarketAnalysis() {
-  const { recordMarketCheck } = useUserStats();
-
-  // ── State ──────────────────────────────────────────────────────────────────
-  const [marketData, setMarketData] = useState<MarketData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [selectedCrops] = useState(['rice', 'coconut', 'pepper']);
-  const [refreshingCrop, setRefreshingCrop] = useState<string | null>(null);
-  const [hoveredCrop, setHoveredCrop] = useState<string | null>(null);
-  const [hoveredAxis, setHoveredAxis] = useState<'left' | 'right' | null>(null);
-
-  const abortRef = useRef<AbortController | null>(null);
-
-  // ── Fetch Market Data from ML Backend ────────────────────────────────────
-  const loadMarketData = useCallback(async (isManualRefresh = false) => {
-    if (abortRef.current) abortRef.current.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    if (isManualRefresh) setIsRefreshing(true);
-    else setIsLoading(true);
-    setError(null);
-
-    try {
-      // Check backend health first
-      const health = await checkMLBackendHealth();
-      setBackendOnline(health.healthy);
-
-      if (!health.healthy) {
-        throw new Error('ML backend is offline. Please start the Python server: cd ml_backend && uvicorn main:app --reload');
-      }
-
-      const data = await fetchMarketData(selectedCrops, 6, controller.signal);
-      setMarketData(data);
-      setLastUpdated(new Date(data.last_updated));
-      recordMarketCheck();
-    } catch (err) {
-      if ((err as Error).name === 'AbortError') return;
-      setError((err as Error).message);
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
-  }, [selectedCrops, recordMarketCheck]);
-
-  // Initial load
-  useEffect(() => {
-    loadMarketData();
-    // Auto-refresh every 30 minutes
-    const interval = setInterval(() => loadMarketData(), AUTO_REFRESH_MS);
-    return () => {
-      clearInterval(interval);
-      abortRef.current?.abort();
-    };
-  }, [loadMarketData]);
-
-  // ── Model Refresh Handler ────────────────────────────────────────────────
-  const handleModelRefresh = async (crop: string) => {
-    setRefreshingCrop(crop);
-    try {
-      await triggerModelRefresh(crop);
-      await loadMarketData(true);
-    } catch (err) {
-      setError(`Model refresh failed: ${(err as Error).message}`);
-    } finally {
-      setRefreshingCrop(null);
-    }
-  };
-
-  // ── Chart Data ────────────────────────────────────────────────────────────
-  const combinedChartData = marketData
-    ? buildCombinedChartData(marketData.history, marketData.forecast, selectedCrops)
-    : [];
-
-  const historyData = marketData
-    ? (marketData.history[selectedCrops[0]] || []).map((pt, idx) => {
-        const row: Record<string, unknown> = { month: pt.month };
-        selectedCrops.forEach((crop) => {
-          row[crop] = marketData.history[crop]?.[idx]?.modal_price ?? null;
-        });
-        return row;
-      })
-    : [];
-
-  const forecastData = marketData
-    ? (marketData.forecast[selectedCrops[0]] || []).map((pt, idx) => {
-        const row: Record<string, unknown> = { month: pt.month };
-        selectedCrops.forEach((crop) => {
-          const f = marketData.forecast[crop]?.[idx] as ForecastPoint | undefined;
-          row[`${crop}_forecast`] = f?.predicted_price ?? null;
-          row[`${crop}_lower`] = f?.lower_bound ?? null;
-          row[`${crop}_upper`] = f?.upper_bound ?? null;
-        });
-        return row;
-      })
-    : [];
-
-  // Pie chart: revenue distribution (derived from live profit data)
-  const revenuePieData = marketData?.profit_analysis.map((p) => ({
-    name: p.crop.charAt(0).toUpperCase() + p.crop.slice(1),
-    value: p.revenue_per_acre,
-    color: marketData.summaries.find((s) => s.crop === p.crop)?.color ?? '#8884d8',
-  })) ?? [];
-
-  // ── Error State ───────────────────────────────────────────────────────────
-  if (!isLoading && error && !marketData) {
-    return (
-      <div className="space-y-4">
-        <Alert variant="destructive">
-          <WifiOff className="h-4 w-4" />
-          <AlertTitle>ML Backend Unavailable</AlertTitle>
-          <AlertDescription className="mt-2">
-            <p>{error}</p>
-            <div className="mt-3 p-3 bg-red-950 text-red-100 rounded-md font-mono text-xs">
-              <p className="text-red-400 mb-1"># Start the ML backend:</p>
-              <p>cd E-Kishaan/HACKATHON/ml_backend</p>
-              <p>pip install -r requirements.txt</p>
-              <p>uvicorn main:app --reload --port 8000</p>
-            </div>
-            <Button onClick={() => loadMarketData()} className="mt-3" size="sm" variant="outline">
-              <RefreshCw className="w-4 h-4 mr-2" /> Retry Connection
-            </Button>
-          </AlertDescription>
-        </Alert>
-      </div>
-    );
-  }
-
-  // ── Loading State ─────────────────────────────────────────────────────────
-  if (isLoading) return <LoadingSkeleton />;
-
-  // ── Render ────────────────────────────────────────────────────────────────
+// ─── Price Forecast Tab ───────────────────────────────────────────────────────
+// Shows the sell/wait advisory with 7-day and 14-day projections
+function PriceForecastTab({ data }: { data: CropPriceInfo[] }) {
   return (
     <div className="space-y-6">
+      {/* Uncertainty disclaimer — shown once at the top */}
+      <Alert className="border-amber-300 bg-amber-50">
+        <ShieldAlert className="h-4 w-4 text-amber-600" />
+        <AlertTitle className="text-amber-800">These are seasonal estimates, not guarantees</AlertTitle>
+        <AlertDescription className="text-amber-700 text-sm">
+          Prices are based on historical Punjab mandi patterns across harvest and sowing seasons.
+          They reflect typical price movements — not today's exact mandi rate.
+          Always check your local mandi before making a final selling decision.
+        </AlertDescription>
+      </Alert>
 
-      {/* ── Header Status Bar ───────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-center gap-2 flex-wrap">
-          <BackendStatusBadge isOnline={backendOnline} isLoading={isRefreshing} />
-          {marketData?.model_info && (
-            <Badge variant="outline" className="text-xs gap-1">
-              <Brain className="w-3 h-3" />
-              {Object.values(marketData.model_info).some(m => m.xgboost) ? 'XGBoost + Prophet' : 'ML Engine'} Active
-            </Badge>
-          )}
-          {lastUpdated && (
-            <span className="text-xs text-gray-400 flex items-center gap-1">
-              <Clock className="w-3 h-3" />
-              Updated {lastUpdated.toLocaleTimeString()}
-            </span>
-          )}
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => loadMarketData(true)}
-          disabled={isRefreshing}
-          className="text-xs gap-1"
-        >
-          <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
-          {isRefreshing ? 'Refreshing…' : 'Refresh Data'}
-        </Button>
-      </div>
-
-      {/* ── Data Source Attribution ──────────────────────────────────────────── */}
-      {marketData && (
-        <div className="flex items-center gap-2 text-xs text-gray-500 bg-gray-50 border rounded-lg px-3 py-2">
-          <ShieldCheck className="w-3.5 h-3.5 text-green-600 shrink-0" />
-          <span><strong>Data Source:</strong> {marketData.data_source}</span>
-        </div>
-      )}
-
-      {/* ── Crop Summary Cards ───────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {marketData?.summaries.map((summary: CropSummary) => (
-          <Card
-            key={summary.crop}
-            className="text-white border-0 shadow-lg"
-            style={{ background: `linear-gradient(135deg, ${summary.color}dd, ${summary.color})` }}
-          >
+      {data.map((crop) => {
+        const conf = confidenceLabel(crop.forecastConfidence);
+        return (
+          <Card key={crop.cropName} className="overflow-hidden">
             <CardHeader className="pb-2">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <DollarSign className="w-5 h-5" />
-                {summary.display_name} Price
-              </CardTitle>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <CardTitle className="text-lg">{crop.cropName} – Price Outlook</CardTitle>
+                <Badge className={conf.color}>{conf.label}</Badge>
+              </div>
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                ₹{summary.current_price.toLocaleString('en-IN')}/{summary.unit}
+
+            <CardContent className="space-y-4">
+              {/* Three-column price timeline */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-xl border-2 border-blue-200 bg-blue-50 p-4 text-center">
+                  <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-1">Today</p>
+                  <p className="text-2xl font-bold text-blue-700">
+                    ₹{crop.currentPrice.toLocaleString('en-IN')}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-0.5">per {crop.unit}</p>
+                </div>
+
+                <div className="rounded-xl border-2 border-amber-200 bg-amber-50 p-4 text-center">
+                  <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-1">In 7 days</p>
+                  <p className="text-2xl font-bold text-amber-700">
+                    ₹{crop.forecast7d.toLocaleString('en-IN')}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {crop.forecast7d > crop.currentPrice
+                      ? `+₹${(crop.forecast7d - crop.currentPrice).toLocaleString('en-IN')} expected`
+                      : crop.forecast7d < crop.currentPrice
+                        ? `-₹${(crop.currentPrice - crop.forecast7d).toLocaleString('en-IN')} expected`
+                        : 'No change expected'}
+                  </p>
+                </div>
+
+                <div className="rounded-xl border-2 border-green-200 bg-green-50 p-4 text-center">
+                  <p className="text-xs font-semibold text-green-600 uppercase tracking-wide mb-1">In 14 days</p>
+                  <p className="text-2xl font-bold text-green-700">
+                    ₹{crop.forecast14d.toLocaleString('en-IN')}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {crop.forecast14d > crop.currentPrice
+                      ? `+₹${(crop.forecast14d - crop.currentPrice).toLocaleString('en-IN')} expected`
+                      : crop.forecast14d < crop.currentPrice
+                        ? `-₹${(crop.currentPrice - crop.forecast14d).toLocaleString('en-IN')} expected`
+                        : 'No change expected'}
+                  </p>
+                </div>
               </div>
-              <div className="flex items-center gap-1 mt-1">
-                {summary.trend === 'up' ? (
-                  <TrendingUp className="w-4 h-4" />
-                ) : summary.trend === 'down' ? (
-                  <TrendingDown className="w-4 h-4" />
-                ) : (
-                  <Minus className="w-4 h-4" />
-                )}
-                <span className="text-sm">
-                  {summary.price_change_pct > 0 ? '+' : ''}{summary.price_change_pct}% this month
-                </span>
+
+              {/* Sell advisory */}
+              <div className={`rounded-xl border-2 p-4 ${adviceColor(crop.sellAdvice)}`}>
+                <div className="flex items-start gap-3">
+                  <span className="text-2xl">{adviceEmoji(crop.sellAdvice)}</span>
+                  <div>
+                    <p className="font-bold text-gray-800 text-base">
+                      {adviceHeadline(crop.sellAdvice)}
+                    </p>
+                    <p className="text-sm text-gray-700 mt-1">{crop.adviceReason}</p>
+                    {crop.waitDays > 0 && (
+                      <p className="text-xs text-gray-500 mt-2 flex items-center gap-1">
+                        <Clock className="w-3.5 h-3.5" />
+                        Make sure storage cost is less than the extra income you will earn by waiting.
+                      </p>
+                    )}
+                  </div>
+                </div>
               </div>
-              <div className="text-xs mt-2 opacity-75">
-                vs ₹{summary.prev_month_price.toLocaleString('en-IN')} last month
+
+              {/* Factors considered */}
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Factors considered in this forecast</p>
+                <div className="flex flex-wrap gap-2">
+                  {['Historical mandi prices', 'Seasonal patterns', 'Crop arrivals', 'Festival demand', 'Regional production'].map((f) => (
+                    <span key={f} className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full">{f}</span>
+                  ))}
+                </div>
               </div>
             </CardContent>
           </Card>
-        ))}
-      </div>
+        );
+      })}
+    </div>
+  );
+}
 
-      {/* ── Optimal Selling Time Alert ───────────────────────────────────────── */}
-      {marketData?.recommendations && marketData.recommendations.length > 0 && (
-        <Alert className="border-green-200 bg-green-50">
-          <Target className="h-4 w-4 text-green-600" />
-          <AlertTitle className="text-green-800 flex items-center gap-2">
-            AI-Optimal Selling Time
-            <Badge className="text-xs bg-green-600 hover:bg-green-700">
-              <Sparkles className="w-3 h-3 mr-1" /> ML Powered
-            </Badge>
-          </AlertTitle>
-          <AlertDescription className="text-green-700">
-            {marketData.recommendations.map((rec, i) => (
-              <span key={i}>
-                {i > 0 && ' · '}
-                <strong>{rec.crop}</strong>: {rec.type === 'hold' ? 'Hold until' : rec.type === 'sell_now' ? 'Sell now →' : 'Stable →'} {rec.peak_month}
-              </span>
-            ))}
-          </AlertDescription>
-        </Alert>
-      )}
+// ─── Profit Analysis Tab ──────────────────────────────────────────────────────
+// Farmer inputs actual investment and revenue; profit + ROI calculated live.
 
-      {/* ── Tabs ─────────────────────────────────────────────────────────────── */}
-      <Tabs defaultValue="prices" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="prices">Price Trends</TabsTrigger>
-          <TabsTrigger value="forecast">AI Forecast</TabsTrigger>
-          <TabsTrigger value="profit">Profit Analysis</TabsTrigger>
-          <TabsTrigger value="recommendations">Recommendations</TabsTrigger>
-        </TabsList>
+interface CropFinancials {
+  investment: string;
+  revenue: string;
+}
 
-        {/* ── Tab 1: Historical Price Trends ────────────────────────────────── */}
-        <TabsContent value="prices" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                Historical Price Trends
-                <Badge variant="outline" className="text-xs">Real Mandi Data</Badge>
-              </CardTitle>
-              <CardDescription>
-                Actual wholesale modal prices from Agmarknet government database — last {historyData.length} months
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="h-80">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={historyData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                    <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                    <YAxis 
-                      yAxisId="left" 
-                      axisLine={{ strokeOpacity: hoveredAxis === 'right' ? 0.1 : 1 }}
-                      tick={{ fontSize: 11, fillOpacity: hoveredAxis === 'right' ? 0.1 : 1 }} 
-                      tickFormatter={(val) => `₹${val}`}
-                      onMouseEnter={() => setHoveredAxis('left')}
-                      onMouseLeave={() => setHoveredAxis(null)}
-                    />
-                    <YAxis 
-                      yAxisId="right" 
-                      orientation="right" 
-                      axisLine={{ strokeOpacity: hoveredAxis === 'left' ? 0.1 : 1 }}
-                      tick={{ fontSize: 11, fillOpacity: hoveredAxis === 'left' ? 0.1 : 1 }} 
-                      tickFormatter={(val) => `₹${val}`}
-                      onMouseEnter={() => setHoveredAxis('right')}
-                      onMouseLeave={() => setHoveredAxis(null)}
-                    />
-                    <Tooltip content={<PriceTooltip activeAxis={hoveredAxis} />} />
-                    <Legend
-                      onMouseEnter={(o) => setHoveredCrop(o.dataKey.toString().replace('_forecast', ''))}
-                      onMouseLeave={() => setHoveredCrop(null)}
-                    />
-                    {marketData?.summaries.map((s) => {
-                      const yAxisId = s.crop === 'coconut' ? 'right' : 'left';
-                      const isFaded = 
-                        (hoveredCrop && hoveredCrop !== s.crop) || 
-                        (hoveredAxis && hoveredAxis !== yAxisId);
-                      return (
-                        <Line
-                          key={s.crop}
-                          yAxisId={s.crop === 'coconut' ? 'right' : 'left'}
-                          type="monotone"
-                          dataKey={s.crop}
-                          stroke={s.color}
-                          strokeWidth={isFaded ? 1 : 2}
-                          strokeOpacity={isFaded ? 0.15 : 1}
-                          dot={isFaded ? false : { r: 3 }}
-                          activeDot={isFaded ? false : { r: 5 }}
-                          name={s.display_name}
-                          connectNulls
-                          onMouseEnter={() => setHoveredCrop(s.crop)}
-                          onMouseLeave={() => setHoveredCrop(null)}
-                        />
-                      );
-                    })}
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
+const PROFIT_STORAGE_KEY = 'agrismart_profit_data';
 
-              {/* Model info footer */}
-              {marketData?.model_info && (
-                <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-                  {Object.entries(marketData.model_info).map(([crop, info]) => (
-                    <div key={crop} className="flex items-center gap-2 text-xs text-gray-500 bg-gray-50 rounded-lg p-2">
-                      <Brain className="w-3.5 h-3.5 text-purple-500" />
-                      <span className="capitalize font-medium">{crop}:</span>
-                      <span>{info.records} records</span>
-                      <span>·</span>
-                      <span>{info.xgboost && info.prophet ? 'XGB+Prophet' : info.xgboost ? 'XGBoost' : 'Prophet'}</span>
-                    </div>
-                  ))}
+function loadProfitData(): Record<string, CropFinancials> {
+  try {
+    const raw = localStorage.getItem(PROFIT_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch { return {}; }
+}
+
+function saveProfitData(data: Record<string, CropFinancials>) {
+  localStorage.setItem(PROFIT_STORAGE_KEY, JSON.stringify(data));
+}
+
+function ProfitAnalysisTab({ data }: { data: CropPriceInfo[] }) {
+  const [financials, setFinancials] = useState<Record<string, CropFinancials>>(
+    () => loadProfitData()
+  );
+  const [editingCrop, setEditingCrop] = useState<string | null>(
+    data.find((c) => !loadProfitData()[c.cropName])?.cropName ?? null
+  );
+
+  useEffect(() => { saveProfitData(financials); }, [financials]);
+
+  function get(cropName: string): CropFinancials {
+    return financials[cropName] ?? { investment: '', revenue: '' };
+  }
+
+  function update(cropName: string, field: keyof CropFinancials, value: string) {
+    if (value !== '' && !/^\d+$/.test(value)) return;
+    setFinancials((prev) => ({ ...prev, [cropName]: { ...get(cropName), [field]: value } }));
+  }
+
+  function hasFilled(cropName: string) {
+    const f = get(cropName);
+    return f.investment !== '' || f.revenue !== '';
+  }
+
+  const totalInv    = data.reduce((s, c) => s + (parseInt(get(c.cropName).investment) || 0), 0);
+  const totalRev    = data.reduce((s, c) => s + (parseInt(get(c.cropName).revenue)    || 0), 0);
+  const totalProfit = totalRev - totalInv;
+  const totalROI    = totalInv > 0 ? (totalProfit / totalInv) * 100 : 0;
+  const hasSummary  = data.some((c) => hasFilled(c.cropName));
+
+  return (
+    <div className="space-y-4">
+      <Alert className="border-blue-200 bg-blue-50">
+        <ReceiptText className="h-4 w-4 text-blue-600" />
+        <AlertTitle className="text-blue-800">Enter your actual numbers</AlertTitle>
+        <AlertDescription className="text-blue-700 text-sm">
+          Add how much you spent and how much you earned for each crop.
+          We will calculate your profit and return on investment (ROI).
+        </AlertDescription>
+      </Alert>
+
+      {data.map((crop) => {
+        const f          = get(crop.cropName);
+        const investment = parseInt(f.investment) || 0;
+        const revenue    = parseInt(f.revenue)    || 0;
+        const profit     = revenue - investment;
+        const roi        = investment > 0 ? (profit / investment) * 100 : 0;
+        const isEditing  = editingCrop === crop.cropName;
+        const filled     = hasFilled(crop.cropName);
+
+        return (
+          <Card key={crop.cropName} className={`transition-all ${isEditing ? 'ring-2 ring-green-400' : ''}`}>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CardTitle className="text-base">{crop.cropName}</CardTitle>
+                  {filled && !isEditing && (
+                    <Badge className={profit >= 0 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
+                      {profit >= 0 ? '✅ Profit' : '❌ Loss'}
+                    </Badge>
+                  )}
                 </div>
+                <Button
+                  variant="outline" size="sm" className="text-xs"
+                  onClick={() => setEditingCrop(isEditing ? null : crop.cropName)}
+                >
+                  {isEditing
+                    ? <><CheckCircle2 className="w-3.5 h-3.5 mr-1 text-green-600" /> Done</>
+                    : <><Pencil className="w-3.5 h-3.5 mr-1" /> {filled ? 'Edit' : 'Enter data'}</>
+                  }
+                </Button>
+              </div>
+            </CardHeader>
+
+            <CardContent className="space-y-4">
+              {isEditing && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-xl">
+                  <div className="space-y-1.5">
+                    <Label htmlFor={`inv-${crop.cropName}`} className="text-sm font-medium text-gray-700">
+                      💸 Total Investment (₹)
+                    </Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-medium">₹</span>
+                      <Input
+                        id={`inv-${crop.cropName}`}
+                        placeholder="e.g. 45000"
+                        value={f.investment}
+                        onChange={(e) => update(crop.cropName, 'investment', e.target.value)}
+                        className="pl-7 h-11"
+                        inputMode="numeric"
+                      />
+                    </div>
+                    <p className="text-xs text-gray-400">Seeds + fertilizer + labour + other costs</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor={`rev-${crop.cropName}`} className="text-sm font-medium text-gray-700">
+                      💰 Total Revenue Earned (₹)
+                    </Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-medium">₹</span>
+                      <Input
+                        id={`rev-${crop.cropName}`}
+                        placeholder="e.g. 84000"
+                        value={f.revenue}
+                        onChange={(e) => update(crop.cropName, 'revenue', e.target.value)}
+                        className="pl-7 h-11"
+                        inputMode="numeric"
+                      />
+                    </div>
+                    <p className="text-xs text-gray-400">Total amount received from selling this crop</p>
+                  </div>
+                </div>
+              )}
+
+              {filled && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="rounded-xl bg-blue-50 p-3 text-center">
+                    <PiggyBank className="w-5 h-5 text-blue-500 mx-auto mb-1" />
+                    <p className="text-xs text-gray-500">Investment</p>
+                    <p className="font-bold text-blue-700 mt-0.5 text-sm">
+                      {investment > 0 ? `₹${investment.toLocaleString('en-IN')}` : '—'}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-green-50 p-3 text-center">
+                    <ReceiptText className="w-5 h-5 text-green-500 mx-auto mb-1" />
+                    <p className="text-xs text-gray-500">Revenue</p>
+                    <p className="font-bold text-green-700 mt-0.5 text-sm">
+                      {revenue > 0 ? `₹${revenue.toLocaleString('en-IN')}` : '—'}
+                    </p>
+                  </div>
+                  <div className={`rounded-xl p-3 text-center ${profit >= 0 ? 'bg-emerald-50' : 'bg-red-50'}`}>
+                    <Wallet className={`w-5 h-5 mx-auto mb-1 ${profit >= 0 ? 'text-emerald-500' : 'text-red-500'}`} />
+                    <p className="text-xs text-gray-500">Net Profit</p>
+                    <p className={`font-bold mt-0.5 text-sm ${profit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+                      {investment > 0 && revenue > 0 ? `${profit >= 0 ? '+' : ''}₹${profit.toLocaleString('en-IN')}` : '—'}
+                    </p>
+                  </div>
+                  <div className={`rounded-xl p-3 text-center ${roi >= 0 ? 'bg-purple-50' : 'bg-red-50'}`}>
+                    <BarChart3 className={`w-5 h-5 mx-auto mb-1 ${roi >= 0 ? 'text-purple-500' : 'text-red-500'}`} />
+                    <p className="text-xs text-gray-500">ROI</p>
+                    <p className={`font-bold mt-0.5 text-sm ${roi >= 0 ? 'text-purple-700' : 'text-red-700'}`}>
+                      {investment > 0 && revenue > 0 ? `${roi >= 0 ? '+' : ''}${roi.toFixed(1)}%` : '—'}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {filled && investment > 0 && revenue > 0 && (
+                <div className={`rounded-xl p-3 text-sm ${
+                  profit >= 0
+                    ? 'bg-green-50 border border-green-200 text-green-800'
+                    : 'bg-red-50 border border-red-200 text-red-800'
+                }`}>
+                  {profit >= 0
+                    ? <>✅ You made a profit of <strong>₹{profit.toLocaleString('en-IN')}</strong> on {crop.cropName}. For every ₹100 invested, you earned back ₹{(100 + roi).toFixed(0)}.</>
+                    : <>⚠️ You had a loss of <strong>₹{Math.abs(profit).toLocaleString('en-IN')}</strong> on {crop.cropName}. For every ₹100 invested, you got back ₹{(100 + roi).toFixed(0)}.</>
+                  }
+                </div>
+              )}
+
+              {!filled && !isEditing && (
+                <p className="text-sm text-gray-400 text-center py-2">
+                  Tap <strong>Enter data</strong> above to add your investment and revenue.
+                </p>
               )}
             </CardContent>
           </Card>
-        </TabsContent>
+        );
+      })}
 
-        {/* ── Tab 2: AI Forecast ────────────────────────────────────────────── */}
-        <TabsContent value="forecast" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                6-Month AI Price Forecast
-                <Badge className="text-xs bg-purple-600 hover:bg-purple-700">
-                  <Brain className="w-3 h-3 mr-1" /> XGBoost + Prophet Ensemble
-                </Badge>
+      {hasSummary && (
+        <Card className="bg-gradient-to-r from-gray-800 to-gray-900 text-white">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">📊 Total Season Summary</CardTitle>
+            <CardDescription className="text-gray-400 text-xs">Across all your crops</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="text-center">
+                <p className="text-xs text-gray-400">Total Invested</p>
+                <p className="text-lg font-bold text-blue-300 mt-0.5">₹{totalInv.toLocaleString('en-IN')}</p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs text-gray-400">Total Revenue</p>
+                <p className="text-lg font-bold text-green-300 mt-0.5">₹{totalRev.toLocaleString('en-IN')}</p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs text-gray-400">Net Profit</p>
+                <p className={`text-lg font-bold mt-0.5 ${totalProfit >= 0 ? 'text-emerald-300' : 'text-red-400'}`}>
+                  {totalProfit >= 0 ? '+' : ''}₹{totalProfit.toLocaleString('en-IN')}
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs text-gray-400">Overall ROI</p>
+                <p className={`text-lg font-bold mt-0.5 ${totalROI >= 0 ? 'text-purple-300' : 'text-red-400'}`}>
+                  {totalROI >= 0 ? '+' : ''}{totalROI.toFixed(1)}%
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ─── Where to Sell Tab ────────────────────────────────────────────────────────
+// Compares 5 Punjab mandis: mandi price, transport cost, net you get.
+function WhereToSellTab({ data }: { data: CropPriceInfo[] }) {
+  const comparisons = getMandiComparison(data);
+
+  return (
+    <div className="space-y-5">
+      <Alert className="border-blue-200 bg-blue-50">
+        <Store className="h-4 w-4 text-blue-600" />
+        <AlertTitle className="text-blue-800">Which mandi gives you the most money?</AlertTitle>
+        <AlertDescription className="text-blue-700 text-sm">
+          We compare price and transport cost across 5 Punjab mandis so you know
+          exactly where to take your crop.
+        </AlertDescription>
+      </Alert>
+
+      {comparisons.map((comp) => {
+        const best = comp.options.find((o) => o.isBest)!;
+        return (
+          <Card key={comp.cropName}>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <IndianRupee className="w-4 h-4 text-green-600" />
+                {comp.cropName}
               </CardTitle>
-              <CardDescription>
-                AI-generated price predictions with 95% confidence intervals. Dashed lines = forecast; shaded bands = uncertainty range.
+              <CardDescription className="text-sm">
+                Best option: <strong className="text-green-700">{best.name} Mandi</strong>
+                {' '}— you get <strong className="text-green-700">₹{best.netRealization.toLocaleString('en-IN')}</strong> per {comp.unit} after transport
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="h-80">
-                <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={forecastData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                    <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                    <YAxis 
-                      yAxisId="left" 
-                      axisLine={{ strokeOpacity: hoveredAxis === 'right' ? 0.1 : 1 }}
-                      tick={{ fontSize: 11, fillOpacity: hoveredAxis === 'right' ? 0.1 : 1 }} 
-                      tickFormatter={(val) => `₹${val}`}
-                      onMouseEnter={() => setHoveredAxis('left')}
-                      onMouseLeave={() => setHoveredAxis(null)}
-                    />
-                    <YAxis 
-                      yAxisId="right" 
-                      orientation="right" 
-                      axisLine={{ strokeOpacity: hoveredAxis === 'left' ? 0.1 : 1 }}
-                      tick={{ fontSize: 11, fillOpacity: hoveredAxis === 'left' ? 0.1 : 1 }} 
-                      tickFormatter={(val) => `₹${val}`}
-                      onMouseEnter={() => setHoveredAxis('right')}
-                      onMouseLeave={() => setHoveredAxis(null)}
-                    />
-                    <Tooltip content={<PriceTooltip activeAxis={hoveredAxis} />} />
-                    <Legend
-                      onMouseEnter={(o) => setHoveredCrop(o.dataKey.toString().replace('_forecast', ''))}
-                      onMouseLeave={() => setHoveredCrop(null)}
-                      formatter={(value) => {
-                        // Only show the forecast line names; hide upper/lower bands
-                        if (value.includes('_upper') || value.includes('_lower')) return null;
-                        return value;
-                      }}
-                    />
-                    {marketData?.summaries.flatMap((s) => {
-                      const yAxisId = s.crop === 'coconut' ? 'right' : 'left';
-                      const isFaded = 
-                        (hoveredCrop && hoveredCrop !== s.crop) || 
-                        (hoveredAxis && hoveredAxis !== yAxisId);
-                      const opacity = isFaded ? 0.15 : 1;
-                      
-                      return [
-                        /* Confidence Interval Band — hidden from legend */
-                        <Area
-                          key={`${s.crop}_upper`}
-                          yAxisId={yAxisId}
-                          type="monotone"
-                          dataKey={`${s.crop}_upper`}
-                          stroke="none"
-                          fill={s.color}
-                          fillOpacity={isFaded ? 0.02 : 0.12}
-                          legendType="none"
-                          onMouseEnter={() => setHoveredCrop(s.crop)}
-                          onMouseLeave={() => setHoveredCrop(null)}
-                        />,
-                        <Area
-                          key={`${s.crop}_lower`}
-                          yAxisId={yAxisId}
-                          type="monotone"
-                          dataKey={`${s.crop}_lower`}
-                          stroke="none"
-                          fill="#f8fafc"
-                          fillOpacity={isFaded ? 0 : 1}
-                          legendType="none"
-                          onMouseEnter={() => setHoveredCrop(s.crop)}
-                          onMouseLeave={() => setHoveredCrop(null)}
-                        />,
-                        /* Forecast Line */
-                        <Line
-                          key={`${s.crop}_forecast`}
-                          yAxisId={yAxisId}
-                          type="monotone"
-                          dataKey={`${s.crop}_forecast`}
-                          stroke={s.color}
-                          strokeWidth={isFaded ? 1 : 2.5}
-                          strokeOpacity={opacity}
-                          strokeDasharray="7 4"
-                          dot={isFaded ? false : { r: 4, fill: s.color }}
-                          activeDot={isFaded ? false : { r: 6 }}
-                          name={`${s.display_name} (Forecast)`}
-                          connectNulls
-                          onMouseEnter={() => setHoveredCrop(s.crop)}
-                          onMouseLeave={() => setHoveredCrop(null)}
-                        />
-                      ];
-                    })}
-                  </ComposedChart>
-                </ResponsiveContainer>
-              </div>
-
-              {/* Peak Price Summary Cards — fully dynamic */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-                {marketData?.recommendations.map((rec) => {
-                  const summary = marketData.summaries.find((s) => s.display_name === rec.crop);
-                  return (
-                    <div
-                      key={rec.crop}
-                      className="text-center p-4 rounded-lg border"
-                      style={{
-                        background: `${summary?.color ?? '#8884d8'}15`,
-                        borderColor: `${summary?.color ?? '#8884d8'}40`,
-                      }}
-                    >
-                      <div className="text-xl font-bold" style={{ color: summary?.color }}>
-                        ₹{rec.peak_price.toLocaleString('en-IN')}
-                      </div>
-                      <p className="text-sm text-gray-600">
-                        Peak {rec.crop} Price ({rec.peak_month})
-                      </p>
-                      <Badge
-                        variant="outline"
-                        className="text-xs mt-1"
-                        style={{ borderColor: summary?.color, color: summary?.color }}
-                      >
-                        {Math.round(rec.confidence * 100)}% confidence
-                      </Badge>
+              <div className="space-y-2">
+                <div className="grid grid-cols-4 gap-2 text-xs font-semibold text-gray-500 uppercase tracking-wide px-3">
+                  <span>Mandi</span>
+                  <span className="text-right">Price</span>
+                  <span className="text-right">Transport</span>
+                  <span className="text-right">You Get</span>
+                </div>
+                {comp.options.map((opt) => (
+                  <div
+                    key={opt.name}
+                    className={`grid grid-cols-4 gap-2 items-center rounded-xl px-3 py-2.5 text-sm ${
+                      opt.isBest
+                        ? 'bg-green-50 border-2 border-green-400 font-semibold'
+                        : 'bg-gray-50 border border-gray-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      {opt.isBest && <span className="text-green-600">⭐</span>}
+                      <span className={opt.isBest ? 'text-green-800' : 'text-gray-700'}>
+                        {opt.name}
+                      </span>
                     </div>
-                  );
-                })}
+                    <span className="text-right text-gray-700">₹{opt.price.toLocaleString('en-IN')}</span>
+                    <span className="text-right text-red-600">−₹{opt.transportCostPerQ}</span>
+                    <span className={`text-right font-bold ${opt.isBest ? 'text-green-700' : 'text-gray-800'}`}>
+                      ₹{opt.netRealization.toLocaleString('en-IN')}
+                    </span>
+                  </div>
+                ))}
               </div>
+              <p className="text-xs text-gray-400 mt-3">
+                Transport cost is per {comp.unit}. Distance estimated from Ludhiana area.
+              </p>
             </CardContent>
           </Card>
-        </TabsContent>
+        );
+      })}
+    </div>
+  );
+}
 
-        {/* ── Tab 3: Profit Analysis ────────────────────────────────────────── */}
-        <TabsContent value="profit" className="space-y-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Profit Analysis by Crop</CardTitle>
-                <CardDescription>
-                  Computed from live market prices × real CACP yield data (per acre)
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {marketData?.profit_analysis.map((p) => {
-                    const summary = marketData.summaries.find((s) => s.crop === p.crop);
-                    return (
-                      <div key={p.crop} className="p-4 border rounded-lg">
-                        <div className="flex justify-between items-center mb-2">
-                          <h4 className="font-medium capitalize">{p.crop}</h4>
-                          <Badge
-                            className="text-white"
-                            style={{
-                              background: p.roi_pct > 80 ? '#22c55e' : p.roi_pct > 50 ? '#3b82f6' : '#f59e0b',
-                            }}
-                          >
-                            {p.roi_pct}% ROI
-                          </Badge>
-                        </div>
-                        <div className="grid grid-cols-3 gap-2 text-sm">
-                          <div>
-                            <p className="text-gray-500">Investment</p>
-                            <p className="font-medium">{formatINR(p.investment_per_acre)}</p>
-                          </div>
-                          <div>
-                            <p className="text-gray-500">Revenue</p>
-                            <p className="font-medium">{formatINR(p.revenue_per_acre)}</p>
-                          </div>
-                          <div>
-                            <p className="text-gray-500">Profit</p>
-                            <p className={`font-medium ${p.profit_per_acre >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                              {formatINR(p.profit_per_acre)}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="mt-2 text-xs text-gray-400">
-                          Yield: {p.yield_per_acre.toLocaleString()} {p.unit}/acre · at ₹{summary?.current_price.toLocaleString('en-IN')}/{p.unit}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </CardContent>
-            </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Revenue Distribution</CardTitle>
-                <CardDescription>Live revenue contribution by crop (per acre)</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-64">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={revenuePieData}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={false}
-                        label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                        outerRadius={90}
-                        dataKey="value"
+// ─── Festival Calendar Tab ───────────────────────────────────────────────────────────────────
+// Simple upcoming festivals list with crop price impact.
+function FestivalCalendarTab({ farmerCrops }: { farmerCrops: string[] }) {
+  const festivals = getUpcomingFestivals(6);
+  const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  const impactColor = (i: string) =>
+    i === 'high'   ? 'bg-green-100 text-green-800 border-green-300' :
+    i === 'medium' ? 'bg-amber-100 text-amber-800 border-amber-300' :
+                     'bg-gray-100 text-gray-600 border-gray-300';
+
+  const impactLabel = (i: string) =>
+    i === 'high' ? '📈 High impact' : i === 'medium' ? '➡️ Medium' : '➡️ Low';
+
+  return (
+    <div className="space-y-4">
+      <Alert className="border-purple-200 bg-purple-50">
+        <CalendarClock className="h-4 w-4 text-purple-600" />
+        <AlertTitle className="text-purple-800">Upcoming festivals &amp; price impact</AlertTitle>
+        <AlertDescription className="text-purple-700 text-sm">
+          Festivals increase demand for certain crops and push prices up.
+          Plan your selling around these dates.
+        </AlertDescription>
+      </Alert>
+
+      {festivals.map((fest) => {
+        // Check if any of the farmer's crops are in this festival
+        const relevantCrops = fest.crops.filter((c) =>
+          farmerCrops.some((fc) => fc.toLowerCase() === c.toLowerCase())
+        );
+        const isRelevant = relevantCrops.length > 0;
+
+        return (
+          <Card key={fest.name} className={isRelevant ? 'ring-2 ring-purple-300' : ''}>
+            <CardContent className="pt-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-bold text-gray-800 text-base">🎉 {fest.name}</h3>
+                    <span className="text-xs text-gray-400">
+                      {MONTH_NAMES[fest.month]} {fest.approxDay}
+                    </span>
+                    {isRelevant && (
+                      <Badge className="bg-purple-100 text-purple-800 text-xs">Your crop!</Badge>
+                    )}
+                  </div>
+                  <p className="text-sm text-gray-600 mt-1">{fest.reason}</p>
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {fest.crops.map((c) => (
+                      <span
+                        key={c}
+                        className={`text-xs px-2 py-0.5 rounded-full border ${
+                          farmerCrops.some((fc) => fc.toLowerCase() === c.toLowerCase())
+                            ? 'bg-purple-100 text-purple-800 border-purple-300 font-semibold'
+                            : 'bg-gray-100 text-gray-500 border-gray-200'
+                        }`}
                       >
-                        {revenuePieData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(value) => [formatINR(Number(value)), 'Revenue/acre']} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Financial Summary — fully dynamic totals */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Financial Summary</CardTitle>
-              <CardDescription>Live computed from current market prices</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {marketData && (() => {
-                const totalInvest = marketData.profit_analysis.reduce((s, p) => s + p.investment_per_acre, 0);
-                const totalRevenue = marketData.profit_analysis.reduce((s, p) => s + p.revenue_per_acre, 0);
-                const totalProfit = marketData.profit_analysis.reduce((s, p) => s + p.profit_per_acre, 0);
-                const avgROI = marketData.profit_analysis.length
-                  ? (marketData.profit_analysis.reduce((s, p) => s + p.roi_pct, 0) / marketData.profit_analysis.length).toFixed(1)
-                  : '0';
-
-                return (
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    {[
-                      { label: 'Total Investment', value: formatINR(totalInvest), color: 'blue', bg: 'bg-blue-50', textColor: 'text-blue-600' },
-                      { label: 'Total Revenue', value: formatINR(totalRevenue), color: 'green', bg: 'bg-green-50', textColor: 'text-green-600' },
-                      { label: 'Net Profit', value: formatINR(totalProfit), color: 'emerald', bg: 'bg-emerald-50', textColor: 'text-emerald-600' },
-                      { label: 'Average ROI', value: `${avgROI}%`, color: 'purple', bg: 'bg-purple-50', textColor: 'text-purple-600' },
-                    ].map((card, i) => (
-                      <div key={i} className={`text-center p-4 ${card.bg} rounded-lg`}>
-                        <div className={`text-2xl font-bold ${card.textColor}`}>{card.value}</div>
-                        <p className="text-sm text-gray-600">{card.label}</p>
-                      </div>
+                        {c}
+                      </span>
                     ))}
                   </div>
-                );
-              })()}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* ── Tab 4: AI Recommendations ─────────────────────────────────────── */}
-        <TabsContent value="recommendations" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Calendar className="w-5 h-5 text-green-500" />
-                  AI Selling Strategy
-                </CardTitle>
-                <CardDescription>Data-driven recommendations from ML ensemble model</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {marketData?.recommendations.map((rec, i) => (
-                    <RecommendationCard key={i} rec={rec} />
-                  ))}
-                  {(!marketData?.recommendations || marketData.recommendations.length === 0) && (
-                    <p className="text-sm text-gray-400">No recommendations generated.</p>
-                  )}
                 </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <BarChart3 className="w-5 h-5 text-purple-500" />
-                  Model Refresh Controls
-                </CardTitle>
-                <CardDescription>Retrain models with latest available market data</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {marketData?.summaries.map((s) => (
-                    <div key={s.crop} className="flex items-center justify-between p-3 border rounded-lg">
-                      <div>
-                        <p className="font-medium text-sm">{s.display_name} Model</p>
-                        <p className="text-xs text-gray-400">
-                          {marketData.model_info[s.crop]?.records ?? '—'} training records ·{' '}
-                          {marketData.model_info[s.crop]?.xgboost && 'XGBoost '}{marketData.model_info[s.crop]?.prophet && '+ Prophet'}
-                        </p>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={refreshingCrop === s.crop}
-                        onClick={() => handleModelRefresh(s.crop)}
-                        className="text-xs gap-1"
-                      >
-                        <RefreshCw className={`w-3 h-3 ${refreshingCrop === s.crop ? 'animate-spin' : ''}`} />
-                        {refreshingCrop === s.crop ? 'Retraining…' : 'Retrain'}
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Risk Management — dynamic, derived from model confidence */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Risk Management Insights</CardTitle>
-              <CardDescription>Derived from ML model uncertainty and market volatility</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {marketData?.summaries.map((s) => {
-                  const forecast = marketData.forecast[s.crop] ?? [];
-                  if (!forecast.length) return null;
-                  const avgConf = forecast.reduce((sum, f) => sum + f.confidence, 0) / forecast.length;
-                  const priceRange = forecast[forecast.length - 1]?.upper_bound - forecast[forecast.length - 1]?.lower_bound;
-                  const volatilityLevel = priceRange > s.current_price * 0.15 ? 'High' : priceRange > s.current_price * 0.07 ? 'Medium' : 'Low';
-                  const bgColor = volatilityLevel === 'High' ? 'bg-red-50 border-red-200' : volatilityLevel === 'Medium' ? 'bg-yellow-50 border-yellow-200' : 'bg-green-50 border-green-200';
-                  const textColor = volatilityLevel === 'High' ? 'text-red-800' : volatilityLevel === 'Medium' ? 'text-yellow-800' : 'text-green-800';
-
-                  return (
-                    <div key={s.crop} className={`p-4 border rounded-lg ${bgColor}`}>
-                      <div className="flex items-center justify-between mb-2">
-                        <h4 className={`font-medium text-sm ${textColor}`}>{s.display_name}</h4>
-                        <Badge variant="outline" className={`text-xs ${textColor}`}>
-                          {volatilityLevel} Volatility
-                        </Badge>
-                      </div>
-                      <p className={`text-xs ${textColor} opacity-90`}>
-                        Model confidence: {Math.round(avgConf * 100)}%
-                      </p>
-                      <p className={`text-xs ${textColor} opacity-75 mt-1`}>
-                        6-month price range: ₹{forecast[forecast.length - 1]?.lower_bound.toLocaleString('en-IN')} – ₹{forecast[forecast.length - 1]?.upper_bound.toLocaleString('en-IN')}
-                      </p>
-                    </div>
-                  );
-                })}
+                <span className={`text-xs px-2 py-1 rounded-lg border whitespace-nowrap ${impactColor(fest.impact)}`}>
+                  {impactLabel(fest.impact)}
+                </span>
               </div>
             </CardContent>
           </Card>
-        </TabsContent>
+        );
+      })}
+
+      <p className="text-xs text-gray-400 text-center">
+        Crops highlighted in purple are the ones you grow. Plan to sell just before these festivals for best prices.
+      </p>
+    </div>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+export default function MarketAnalysis({
+  primaryCrops = ['Rice', 'Coconut', 'Pepper'],
+  state,
+}: MarketAnalysisProps) {
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ['marketPrices', primaryCrops, state],
+    queryFn: () => fetchMarketPrices(primaryCrops, state),
+    staleTime: 30 * 60 * 1000,   // refetch after 30 minutes
+    retry: 2,
+  });
+
+  // ── Loading state ────────────────────────────────────────────────────────────
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {primaryCrops.map((c) => <CropCardSkeleton key={c} />)}
+        </div>
+        <Skeleton className="h-40 w-full rounded-xl" />
+        <Skeleton className="h-40 w-full rounded-xl" />
+      </div>
+    );
+  }
+
+  // ── Error state ──────────────────────────────────────────────────────────────
+  if (isError) {
+    return (
+      <Alert className="border-red-300 bg-red-50">
+        <AlertCircle className="h-4 w-4 text-red-600" />
+        <AlertTitle className="text-red-800">Could not load market prices</AlertTitle>
+        <AlertDescription className="text-red-700 text-sm">
+          {(error as Error)?.message ?? 'Please check your internet connection and try again.'}
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
+  const crops: CropPriceInfo[] = data ?? [];
+
+  return (
+    <div className="space-y-6">
+      {/* ── Top crop price summary cards (personalised) ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+        {crops.map((crop, i) => {
+          const gradients = [
+            'from-green-500 to-emerald-600',
+            'from-blue-500 to-cyan-600',
+            'from-orange-500 to-amber-600',
+            'from-purple-500 to-violet-600',
+            'from-rose-500 to-pink-600',
+          ];
+          const gradient = gradients[i % gradients.length];
+
+          return (
+            <Card key={crop.cropName} className={`bg-gradient-to-r ${gradient} text-white shadow-md`}>
+              <CardHeader className="pb-1">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <IndianRupee className="w-4 h-4" />
+                  {crop.cropName}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  ₹{crop.currentPrice.toLocaleString('en-IN')}
+                  <span className="text-sm font-normal opacity-80">/{crop.unit}</span>
+                </div>
+                <div className="flex items-center gap-1.5 mt-1 text-sm opacity-90">
+                  {trendIcon(crop.trend)}
+                  <span>
+                    {crop.priceChange > 0 ? '+' : ''}{crop.priceChange}% this month
+                  </span>
+                </div>
+                <div className="text-xs opacity-70 mt-1 flex items-center gap-1">
+                  <CalendarClock className="w-3 h-3" />
+                  {crop.market}
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
+      {/* ── Personalisation notice ── */}
+      {primaryCrops.length > 0 && (
+        <Alert className="border-green-200 bg-green-50">
+          <AlertCircle className="h-4 w-4 text-green-600" />
+          <AlertDescription className="text-green-700 text-sm">
+            Showing prices for <strong>{primaryCrops.join(', ')}</strong> — your crops from your profile.
+            Update your profile to change which crops appear here.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* ── Tabs ── */}
+      <Tabs defaultValue="trends" className="w-full">
+        <TabsList className="grid w-full grid-cols-5">
+          <TabsTrigger value="trends">Price Trends</TabsTrigger>
+          <TabsTrigger value="forecast">Price Forecast</TabsTrigger>
+          <TabsTrigger value="sell">Where to Sell</TabsTrigger>
+          <TabsTrigger value="festivals">Festivals</TabsTrigger>
+          <TabsTrigger value="profit">Profit Analysis</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="trends"    className="mt-4"><PriceTrendsTab    data={crops} /></TabsContent>
+        <TabsContent value="forecast"  className="mt-4"><PriceForecastTab  data={crops} /></TabsContent>
+        <TabsContent value="sell"      className="mt-4"><WhereToSellTab    data={crops} /></TabsContent>
+        <TabsContent value="festivals" className="mt-4"><FestivalCalendarTab farmerCrops={primaryCrops} /></TabsContent>
+        <TabsContent value="profit"    className="mt-4"><ProfitAnalysisTab  data={crops} /></TabsContent>
       </Tabs>
     </div>
   );
