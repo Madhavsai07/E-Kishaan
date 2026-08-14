@@ -8,8 +8,10 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 import LanguageToggle from '@/components/LanguageToggle';
-import { Bell, CloudRain, Leaf, TrendingUp, Zap, LogOut, Map, Edit3 } from 'lucide-react';
+import CropRoadmapView from '@/components/CropRoadmapView';
+import FarmJournalView from '@/components/FarmJournalView';
 import FarmerOnboarding, { clearProfile } from '@/components/FarmerOnboarding';
+import AlertsCenter, { AlertItem } from '@/components/AlertsCenter';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/components/ui/sonner';
 
@@ -44,6 +46,7 @@ interface FarmerProfile {
 
 const PROFILE_KEY = 'agrismart_farmer_profile';
 const SESSION_CROP_KEY = 'ekisaan_session_crop_selected';
+const ALERTS_STORAGE_KEY = 'ekisaan_user_alerts';
 
 function loadProfile(): FarmerProfile | null {
   try {
@@ -52,12 +55,26 @@ function loadProfile(): FarmerProfile | null {
   } catch { return null; }
 }
 
+function getStoredUnreadAlertsCount(): number {
+  try {
+    const raw = localStorage.getItem(ALERTS_STORAGE_KEY);
+    if (raw) {
+      const items: AlertItem[] = JSON.parse(raw);
+      return items.filter((i) => !i.read).length;
+    }
+  } catch {}
+  return 3;
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function Index() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { user: authUser, profile: authProfile, logout } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [roadmapSubTab, setRoadmapSubTab] = useState<'roadmap' | 'journal' | 'planner'>('roadmap');
+  const [alertsOpen, setAlertsOpen] = useState(false);
+  const [unreadAlertsCount, setUnreadAlertsCount] = useState<number>(getStoredUnreadAlertsCount);
 
   // Farmer profile from onboarding (localStorage)
   const [farmer, setFarmer] = useState<FarmerProfile | null>(() => loadProfile());
@@ -72,6 +89,11 @@ export default function Index() {
     const stored = loadProfile();
     if (stored) setFarmer(stored);
   }, []);
+
+  // Sync unread count periodically or when dialog opens/closes
+  useEffect(() => {
+    setUnreadAlertsCount(getStoredUnreadAlertsCount());
+  }, [alertsOpen]);
 
   const handleOnboardingComplete = (profile: FarmerProfile) => {
     sessionStorage.setItem(SESSION_CROP_KEY, 'true');
@@ -136,15 +158,23 @@ export default function Index() {
             </div>
 
             <div className="flex items-center space-x-3">
-              {/* Language toggle from friend's feature */}
+              {/* Language toggle */}
               <LanguageToggle size="sm" />
 
-              <Button variant="outline" size="sm" className="relative">
-                <Bell className="w-4 h-4 mr-2" />
-                {t('common.alerts') || 'Alerts'}
-                <Badge className="absolute -top-2 -right-2 w-5 h-5 p-0 flex items-center justify-center bg-red-500">
-                  3
-                </Badge>
+              {/* Functional Alerts Button */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setAlertsOpen(true)}
+                className="relative flex items-center gap-1.5 hover:bg-green-50 border-green-300 transition-all"
+              >
+                <Bell className="w-4 h-4 text-green-700" />
+                <span>{t('common.alerts') || 'Alerts'}</span>
+                {unreadAlertsCount > 0 && (
+                  <Badge className="absolute -top-2 -right-2 min-w-[20px] h-5 p-0.5 flex items-center justify-center bg-red-500 text-white text-xs font-bold shadow-sm animate-pulse">
+                    {unreadAlertsCount}
+                  </Badge>
+                )}
               </Button>
 
               <div className="flex items-center space-x-2">
@@ -206,7 +236,7 @@ export default function Index() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-lg">{t('dashboard.overview.todayWeather') || "Today's Weather"}</CardTitle>
+                  <CardTitle className="text-lg">{t('dashboard.overview.todaysWeather') || "Today's Weather"}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">28°C</div>
@@ -317,11 +347,60 @@ export default function Index() {
             </Suspense>
           </TabsContent>
 
-          {/* Farm Roadmap — friend's feature */}
-          <TabsContent value="roadmap">
-            <Suspense fallback={<TabFallback />}>
-              <FarmRoadmap />
-            </Suspense>
+          {/* Farm Roadmap & Operating Journal */}
+          <TabsContent value="roadmap" className="space-y-6">
+            <div className="flex items-center justify-between bg-white p-2.5 rounded-2xl border border-green-200 shadow-sm flex-wrap gap-2">
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setRoadmapSubTab('roadmap')}
+                  className={`text-xs px-4 py-2 rounded-xl font-bold transition-all flex items-center gap-1.5 ${
+                    roadmapSubTab === 'roadmap'
+                      ? 'bg-emerald-600 text-white shadow-md'
+                      : 'bg-gray-50 text-gray-700 hover:bg-emerald-50'
+                  }`}
+                >
+                  🌾 16-Week Crop Roadmap
+                </button>
+                <button
+                  onClick={() => setRoadmapSubTab('journal')}
+                  className={`text-xs px-4 py-2 rounded-xl font-bold transition-all flex items-center gap-1.5 ${
+                    roadmapSubTab === 'journal'
+                      ? 'bg-emerald-600 text-white shadow-md'
+                      : 'bg-gray-50 text-gray-700 hover:bg-emerald-50'
+                  }`}
+                >
+                  📓 Double-Entry Farm Journal
+                </button>
+                <button
+                  onClick={() => setRoadmapSubTab('planner')}
+                  className={`text-xs px-4 py-2 rounded-xl font-bold transition-all flex items-center gap-1.5 ${
+                    roadmapSubTab === 'planner'
+                      ? 'bg-emerald-600 text-white shadow-md'
+                      : 'bg-gray-50 text-gray-700 hover:bg-emerald-50'
+                  }`}
+                >
+                  📋 AI Daily Planner & Tasks
+                </button>
+              </div>
+
+              <div className="text-xs text-gray-500 font-medium px-2">
+                Active Crop: <strong className="text-emerald-800">{farmer.primaryCrops[0] || 'Wheat'}</strong>
+              </div>
+            </div>
+
+            {roadmapSubTab === 'roadmap' && (
+              <CropRoadmapView cropName={farmer.primaryCrops[0] || 'Wheat'} areaAcres={2.5} />
+            )}
+
+            {roadmapSubTab === 'journal' && (
+              <FarmJournalView farmId={`FARM-${(farmer.primaryCrops[0] || 'WHEAT').toUpperCase()}-101`} />
+            )}
+
+            {roadmapSubTab === 'planner' && (
+              <Suspense fallback={<TabFallback />}>
+                <FarmRoadmap />
+              </Suspense>
+            )}
           </TabsContent>
 
           <TabsContent value="solver">
@@ -331,6 +410,15 @@ export default function Index() {
           </TabsContent>
         </Tabs>
       </main>
+
+      {/* Interactive Alerts Center Modal */}
+      <AlertsCenter
+        open={alertsOpen}
+        onOpenChange={setAlertsOpen}
+        farmerCrops={farmer.primaryCrops}
+        location={displayLocation}
+        onNavigateTab={(tab) => setActiveTab(tab)}
+      />
     </div>
   );
 }
