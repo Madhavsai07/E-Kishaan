@@ -7,14 +7,14 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import LanguageToggle from '@/components/LanguageToggle';
-import { Bell, CloudRain, Leaf, TrendingUp, Zap, LogOut, Map } from 'lucide-react';
+import { Bell, CloudRain, Leaf, TrendingUp, Zap, LogOut, Map, Edit3 } from 'lucide-react';
 import WeatherDashboard from '@/components/WeatherDashboard';
 import SoilFertility from '@/components/SoilFertility';
 import CropGrowth from '@/components/CropGrowth';
 import MarketAnalysis from '@/components/MarketAnalysis';
 import FrankensteinSolver from '@/components/FrankensteinSolver';
 import FarmRoadmap from '@/components/FarmRoadmap';
-import FarmerOnboarding from '@/components/FarmerOnboarding';
+import FarmerOnboarding, { clearProfile } from '@/components/FarmerOnboarding';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/components/ui/sonner';
 
@@ -24,9 +24,12 @@ interface FarmerProfile {
   location: string;
   state: string;
   primaryCrops: string[];
+  points?: number;
+  level?: string;
 }
 
 const PROFILE_KEY = 'agrismart_farmer_profile';
+const SESSION_CROP_KEY = 'ekisaan_session_crop_selected';
 
 function loadProfile(): FarmerProfile | null {
   try {
@@ -45,24 +48,35 @@ export default function Index() {
   // Farmer profile from onboarding (localStorage)
   const [farmer, setFarmer] = useState<FarmerProfile | null>(() => loadProfile());
 
-  // Re-read profile if it changes (e.g. after onboarding completes)
+  // Session-based flag to ensure crop selection is shown right after login
+  const [cropSelectionDone, setCropSelectionDone] = useState<boolean>(() => {
+    return sessionStorage.getItem(SESSION_CROP_KEY) === 'true';
+  });
+
+  // Re-read profile if it changes
   useEffect(() => {
     const stored = loadProfile();
     if (stored) setFarmer(stored);
   }, []);
 
   const handleOnboardingComplete = (profile: FarmerProfile) => {
+    sessionStorage.setItem(SESSION_CROP_KEY, 'true');
     setFarmer(profile);
+    setCropSelectionDone(true);
   };
 
-  // Show onboarding if no farmer profile yet
-  if (!farmer) {
+  const handleReopenCropSelection = () => {
+    setCropSelectionDone(false);
+  };
+
+  // Show crop selection screen if profile is missing OR crop selection not done for this login session
+  if (!farmer || !cropSelectionDone) {
     return (
       <FarmerOnboarding
         onComplete={handleOnboardingComplete}
-        defaultName={authProfile?.name || authUser?.email?.split('@')[0] || 'Farmer'}
-        defaultLocation={authProfile?.location || 'Ludhiana, Punjab'}
-        defaultState={authProfile?.state || 'Punjab'}
+        defaultName={authProfile?.name || authUser?.email?.split('@')[0] || farmer?.name || 'Farmer'}
+        defaultLocation={authProfile?.location || farmer?.location || 'Ludhiana, Punjab'}
+        defaultState={authProfile?.state || farmer?.state || 'Punjab'}
       />
     );
   }
@@ -80,8 +94,10 @@ export default function Index() {
 
   const handleLogout = async () => {
     try {
+      sessionStorage.removeItem(SESSION_CROP_KEY);
+      clearProfile();
       await logout();
-      navigate('/');
+      navigate('/login');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not log out.');
     }
@@ -140,7 +156,6 @@ export default function Index() {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          {/* 7 tabs: our 6 + FarmRoadmap from friend */}
           <TabsList className="grid w-full grid-cols-7 mb-6">
             <TabsTrigger value="dashboard" className="flex items-center gap-2">
               <TrendingUp className="w-4 h-4" />
@@ -164,7 +179,7 @@ export default function Index() {
             </TabsTrigger>
             <TabsTrigger value="roadmap" className="flex items-center gap-2">
               <Map className="w-4 h-4 text-emerald-600" />
-              {t('dashboard.tabs.roadmap') || 'Roadmap'}
+              {t('dashboard.tabs.roadmap') || 'My Farm Roadmap'}
             </TabsTrigger>
             <TabsTrigger value="solver" className="flex items-center gap-2">
               <Zap className="w-4 h-4" />
@@ -197,11 +212,11 @@ export default function Index() {
 
               <Card className="bg-gradient-to-r from-orange-500 to-orange-600 text-white">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-lg">{t('dashboard.overview.cropStatus') || 'Active Crops'}</CardTitle>
+                  <CardTitle className="text-lg">{t('dashboard.overview.cropStatus') || 'Crop Status'}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">{farmer.primaryCrops.length}</div>
-                  <p className="text-orange-100">{farmer.primaryCrops.join(', ')}</p>
+                  <p className="text-orange-100 font-medium">{farmer.primaryCrops.join(', ')}</p>
                 </CardContent>
               </Card>
 
@@ -228,14 +243,24 @@ export default function Index() {
               </Card>
 
               <Card>
-                <CardHeader>
-                  <CardTitle>Your Crops</CardTitle>
-                  <CardDescription>Crops you plan to grow this season</CardDescription>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <div>
+                    <CardTitle>Your Crops</CardTitle>
+                    <CardDescription>Crops you plan to grow this season</CardDescription>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleReopenCropSelection}
+                    className="flex items-center gap-1.5 text-xs text-green-700 border-green-300 hover:bg-green-50"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" /> Change Crops
+                  </Button>
                 </CardHeader>
                 <CardContent>
                   <div className="flex flex-wrap gap-2 mb-3">
                     {farmer.primaryCrops.map((crop) => (
-                      <Badge key={crop} className="bg-green-100 text-green-800 text-sm px-3 py-1">
+                      <Badge key={crop} className="bg-green-100 text-green-800 text-sm px-3 py-1 font-medium">
                         🌾 {crop}
                       </Badge>
                     ))}
