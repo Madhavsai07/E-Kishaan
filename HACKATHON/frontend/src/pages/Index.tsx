@@ -1,48 +1,84 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Bell, CloudRain, Leaf, TrendingUp, Zap } from 'lucide-react';
+import LanguageToggle from '@/components/LanguageToggle';
+import { Bell, CloudRain, Leaf, TrendingUp, Zap, LogOut, Map } from 'lucide-react';
 import WeatherDashboard from '@/components/WeatherDashboard';
 import SoilFertility from '@/components/SoilFertility';
 import CropGrowth from '@/components/CropGrowth';
 import MarketAnalysis from '@/components/MarketAnalysis';
 import FrankensteinSolver from '@/components/FrankensteinSolver';
-import UserProfile from '@/components/UserProfile';
-import FarmerOnboarding, {
-  loadProfile,
-  saveProfile,
-  type FarmerProfile,
-} from '@/components/FarmerOnboarding';
+import FarmRoadmap from '@/components/FarmRoadmap';
+import FarmerOnboarding from '@/components/FarmerOnboarding';
+import { useAuth } from '@/contexts/AuthContext';
+import { toast } from '@/components/ui/sonner';
 
+// ─── Farmer profile shape ────────────────────────────────────────────────────
+interface FarmerProfile {
+  name: string;
+  location: string;
+  state: string;
+  primaryCrops: string[];
+}
+
+const PROFILE_KEY = 'agrismart_farmer_profile';
+
+function loadProfile(): FarmerProfile | null {
+  try {
+    const raw = localStorage.getItem(PROFILE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 export default function Index() {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const { user: authUser, profile: authProfile, logout } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
 
-  // Load profile from localStorage on first render.
-  // null = onboarding not yet completed.
+  // Farmer profile from onboarding (localStorage)
   const [farmer, setFarmer] = useState<FarmerProfile | null>(() => loadProfile());
 
-  // ── Show onboarding until farmer completes setup ────────────────────────────
+  // Re-read profile if it changes (e.g. after onboarding completes)
+  useEffect(() => {
+    const stored = loadProfile();
+    if (stored) setFarmer(stored);
+  }, []);
+
+  const handleOnboardingComplete = (profile: FarmerProfile) => {
+    setFarmer(profile);
+  };
+
+  // Show onboarding if no farmer profile yet
   if (!farmer) {
-    return (
-      <FarmerOnboarding
-        onComplete={(profile) => {
-          saveProfile(profile);
-          setFarmer(profile);
-        }}
-      />
-    );
+    return <FarmerOnboarding onComplete={handleOnboardingComplete} />;
   }
 
-  // ── Initials for avatar ─────────────────────────────────────────────────────
-  const initials = farmer.name
+  // Display name: prefer auth profile > onboarding name
+  const displayName     = authProfile?.name || authUser?.email || farmer.name;
+  const displayLocation = authProfile?.location || farmer.location;
+  const initials = displayName
     .split(' ')
-    .map((w) => w[0])
+    .map((p: string) => p[0])
+    .filter(Boolean)
+    .slice(0, 2)
     .join('')
-    .toUpperCase()
-    .slice(0, 2);
+    .toUpperCase();
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      navigate('/');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not log out.');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 via-blue-50 to-emerald-50">
@@ -62,10 +98,13 @@ export default function Index() {
               </div>
             </div>
 
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-3">
+              {/* Language toggle from friend's feature */}
+              <LanguageToggle size="sm" />
+
               <Button variant="outline" size="sm" className="relative">
                 <Bell className="w-4 h-4 mr-2" />
-                Alerts
+                {t('common.alerts') || 'Alerts'}
                 <Badge className="absolute -top-2 -right-2 w-5 h-5 p-0 flex items-center justify-center bg-red-500">
                   3
                 </Badge>
@@ -74,13 +113,18 @@ export default function Index() {
               <div className="flex items-center space-x-2">
                 <Avatar className="w-8 h-8">
                   <AvatarImage src="/placeholder-avatar.jpg" />
-                  <AvatarFallback>{initials}</AvatarFallback>
+                  <AvatarFallback>{initials || 'TF'}</AvatarFallback>
                 </Avatar>
                 <div className="text-sm">
-                  <p className="font-medium">{farmer.name}</p>
-                  <p className="text-gray-500 text-xs">{farmer.location}</p>
+                  <p className="font-medium">{displayName}</p>
+                  <p className="text-gray-500 text-xs">{displayLocation}</p>
                 </div>
               </div>
+
+              <Button variant="ghost" size="sm" onClick={handleLogout}>
+                <LogOut className="w-4 h-4 mr-2" />
+                {t('common.logOut') || 'Log out'}
+              </Button>
             </div>
           </div>
         </div>
@@ -89,76 +133,78 @@ export default function Index() {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-6 mb-6">
+          {/* 7 tabs: our 6 + FarmRoadmap from friend */}
+          <TabsList className="grid w-full grid-cols-7 mb-6">
             <TabsTrigger value="dashboard" className="flex items-center gap-2">
               <TrendingUp className="w-4 h-4" />
-              Dashboard
+              {t('dashboard.tabs.dashboard') || 'Dashboard'}
             </TabsTrigger>
             <TabsTrigger value="weather" className="flex items-center gap-2">
               <CloudRain className="w-4 h-4" />
-              Weather
+              {t('dashboard.tabs.weather') || 'Weather'}
             </TabsTrigger>
             <TabsTrigger value="soil" className="flex items-center gap-2">
               <Leaf className="w-4 h-4" />
-              Soil Health
+              {t('dashboard.tabs.soil') || 'Soil Health'}
             </TabsTrigger>
             <TabsTrigger value="crops" className="flex items-center gap-2">
               <Leaf className="w-4 h-4" />
-              Crop Growth
+              {t('dashboard.tabs.crops') || 'Crop Growth'}
             </TabsTrigger>
             <TabsTrigger value="market" className="flex items-center gap-2">
               <TrendingUp className="w-4 h-4" />
-              Market
+              {t('dashboard.tabs.market') || 'Market'}
+            </TabsTrigger>
+            <TabsTrigger value="roadmap" className="flex items-center gap-2">
+              <Map className="w-4 h-4 text-emerald-600" />
+              {t('dashboard.tabs.roadmap') || 'Roadmap'}
             </TabsTrigger>
             <TabsTrigger value="solver" className="flex items-center gap-2">
               <Zap className="w-4 h-4" />
-              AI Solver
+              {t('dashboard.tabs.solver') || 'AI Solver'}
             </TabsTrigger>
           </TabsList>
 
-          {/* ── Dashboard ── */}
+          {/* Dashboard Tab */}
           <TabsContent value="dashboard" className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-lg">Today's Weather</CardTitle>
+                  <CardTitle className="text-lg">{t('dashboard.overview.todayWeather') || "Today's Weather"}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">28°C</div>
-                  <p className="text-blue-100">Partly Cloudy</p>
+                  <p className="text-blue-100">{t('dashboard.overview.partlyCloudy') || 'Partly Cloudy'}</p>
                 </CardContent>
               </Card>
 
               <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-lg">Soil Health</CardTitle>
+                  <CardTitle className="text-lg">{t('dashboard.overview.soilHealth') || 'Soil Health'}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">85%</div>
-                  <p className="text-green-100">Excellent</p>
+                  <p className="text-green-100">{t('dashboard.overview.excellent') || 'Excellent'}</p>
                 </CardContent>
               </Card>
 
               <Card className="bg-gradient-to-r from-orange-500 to-orange-600 text-white">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-lg">Active Crops</CardTitle>
+                  <CardTitle className="text-lg">{t('dashboard.overview.cropStatus') || 'Active Crops'}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">{farmer.primaryCrops.length}</div>
-                  <p className="text-orange-100">
-                    {farmer.primaryCrops.slice(0, 2).join(', ')}
-                    {farmer.primaryCrops.length > 2 ? ` +${farmer.primaryCrops.length - 2}` : ''}
-                  </p>
+                  <p className="text-orange-100">{farmer.primaryCrops.join(', ')}</p>
                 </CardContent>
               </Card>
 
               <Card className="bg-gradient-to-r from-purple-500 to-purple-600 text-white">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-lg">Expected ROI</CardTitle>
+                  <CardTitle className="text-lg">{t('dashboard.overview.expectedRoi') || 'Expected ROI'}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">24%</div>
-                  <p className="text-purple-100">This Season</p>
+                  <p className="text-purple-100">{t('dashboard.overview.thisSeason') || 'This Season'}</p>
                 </CardContent>
               </Card>
             </div>
@@ -166,8 +212,8 @@ export default function Index() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>Quick Weather Overview</CardTitle>
-                  <CardDescription>Next 7 days forecast</CardDescription>
+                  <CardTitle>{t('dashboard.overview.quickWeatherOverview') || 'Quick Weather Overview'}</CardTitle>
+                  <CardDescription>{t('dashboard.overview.next7Days') || 'Next 7 days forecast'}</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <WeatherDashboard compact={true} />
@@ -180,7 +226,7 @@ export default function Index() {
                   <CardDescription>Crops you plan to grow this season</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-2 mb-3">
                     {farmer.primaryCrops.map((crop) => (
                       <Badge key={crop} className="bg-green-100 text-green-800 text-sm px-3 py-1">
                         🌾 {crop}
@@ -207,12 +253,17 @@ export default function Index() {
             <CropGrowth />
           </TabsContent>
 
-          {/* ── Market — passes farmer's crops & state ── */}
+          {/* Market — personalised with farmer's crops & state */}
           <TabsContent value="market">
             <MarketAnalysis
               primaryCrops={farmer.primaryCrops}
               state={farmer.state}
             />
+          </TabsContent>
+
+          {/* Farm Roadmap — friend's feature */}
+          <TabsContent value="roadmap">
+            <FarmRoadmap />
           </TabsContent>
 
           <TabsContent value="solver">
