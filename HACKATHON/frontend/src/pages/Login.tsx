@@ -17,7 +17,7 @@ export default function Login() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, login, resetPassword } = useAuth();
+  const { user, login, guestLogin, resetPassword } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({ email: '', password: '' });
@@ -30,13 +30,18 @@ export default function Login() {
     }
   }, [user, location.state, navigate]);
 
+  const handleGuestLogin = () => {
+    guestLogin(undefined, formData.email || undefined);
+    toast.success('Logged in as Demo Farmer!');
+    navigate('/dashboard');
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
 
     if (!isSupabaseConfigured) {
-      toast.info('Supabase is not configured yet. Entering Dashboard in Guest Mode.');
-      navigate('/dashboard');
+      handleGuestLogin();
       setIsSubmitting(false);
       return;
     }
@@ -46,7 +51,8 @@ export default function Login() {
       toast.success('Welcome back!');
       navigate('/dashboard');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not log in. Please try again.');
+      const msg = error instanceof Error ? error.message : 'Could not log in. Please try again.';
+      toast.error(msg);
     } finally {
       setIsSubmitting(false);
     }
@@ -55,7 +61,7 @@ export default function Login() {
   const handleForgotPassword = async () => {
     if (!isSupabaseConfigured) {
       toast.info('Supabase is not configured. Redirecting to Dashboard.');
-      navigate('/dashboard');
+      handleGuestLogin();
       return;
     }
 
@@ -98,11 +104,11 @@ export default function Login() {
                 <AlertTitle className="font-semibold text-blue-950">Supabase Backend Unconfigured</AlertTitle>
                 <AlertDescription className="text-sm mt-1 space-y-3">
                   <p className="text-blue-800">
-                    Supabase keys are not set in <code className="bg-blue-100 px-1 py-0.5 rounded text-xs font-mono text-blue-900">.env.local</code>. You can access all dashboard modules directly in Guest Mode!
+                    Supabase keys are not set in <code className="bg-blue-100 px-1 py-0.5 rounded text-xs font-mono text-blue-900">.env.local</code>. You can access all dashboard modules directly in Guest/Demo Mode!
                   </p>
                   <Button
                     type="button"
-                    onClick={() => navigate('/dashboard')}
+                    onClick={handleGuestLogin}
                     className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-medium flex items-center justify-center gap-2"
                   >
                     <span>Continue to Dashboard (Guest Mode)</span>
@@ -159,13 +165,24 @@ export default function Login() {
                 </button>
               </div>
 
-              <Button
-                type="submit"
-                disabled={isSubmitting}
-                className="w-full h-12 text-lg bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
-              >
-                {isSubmitting ? t('auth.login.submitting') : isSupabaseConfigured ? t('auth.login.submit') : t('common.openDashboard')}
-              </Button>
+              <div className="space-y-3">
+                <Button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="w-full h-12 text-lg bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
+                >
+                  {isSubmitting ? t('auth.login.submitting') : isSupabaseConfigured ? t('auth.login.submit') : t('common.openDashboard')}
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleGuestLogin}
+                  className="w-full h-12 text-lg border-emerald-300 text-emerald-800 hover:bg-emerald-50"
+                >
+                  Quick Guest / Demo Login
+                </Button>
+              </div>
             </form>
 
             <p className="mt-6 text-center text-lg text-gray-600">

@@ -16,7 +16,7 @@ import { isSupabaseConfigured } from '@/lib/supabase';
 export default function Signup() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { user, signup } = useAuth();
+  const { user, signup, guestLogin } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
@@ -33,12 +33,17 @@ export default function Signup() {
     if (user) navigate('/dashboard', { replace: true });
   }, [user, navigate]);
 
+  const handleGuestSignup = () => {
+    guestLogin(formData.name || undefined, formData.email || undefined);
+    toast.success('Account created in Guest Mode!');
+    navigate('/dashboard');
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!isSupabaseConfigured) {
-      toast.info('Supabase is not configured yet. Entering Dashboard in Guest Mode.');
-      navigate('/dashboard');
+      handleGuestSignup();
       return;
     }
 
@@ -99,7 +104,7 @@ export default function Signup() {
                   </p>
                   <Button
                     type="button"
-                    onClick={() => navigate('/dashboard')}
+                    onClick={handleGuestSignup}
                     className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-medium flex items-center justify-center gap-2"
                   >
                     <span>Continue to Dashboard (Guest Mode)</span>

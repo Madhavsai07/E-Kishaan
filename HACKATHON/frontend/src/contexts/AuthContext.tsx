@@ -2,6 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 import type { User } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured, type Profile } from '@/lib/supabase';
 
+const GUEST_STORAGE_KEY = 'ekishaan_guest_user_session';
+
 interface AuthContextValue {
   user: User | null;
   profile: Profile | null;
@@ -9,12 +11,37 @@ interface AuthContextValue {
   /** True once signup succeeds but Supabase requires email confirmation before a session exists. */
   signup: (name: string, email: string, password: string, location?: string) => Promise<{ needsEmailConfirmation: boolean }>;
   login: (email: string, password: string) => Promise<void>;
+  guestLogin: (name?: string, email?: string) => void;
   logout: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   updateProfile: (patch: Partial<Pick<Profile, 'name' | 'location' | 'land_size' | 'primary_crops' | 'experience' | 'phone'>>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+
+const createMockUser = (email = 'farmer@ekishaan.org', name = 'Farmer User'): User => ({
+  id: 'guest-farmer-id-101',
+  app_metadata: { provider: 'email' },
+  user_metadata: { full_name: name },
+  aud: 'authenticated',
+  created_at: new Date().toISOString(),
+  email,
+  role: 'authenticated',
+  updated_at: new Date().toISOString(),
+});
+
+const createMockProfile = (email = 'farmer@ekishaan.org', name = 'Farmer User'): Profile => ({
+  id: 'guest-farmer-id-101',
+  name,
+  email,
+  location: 'Ludhiana, Punjab',
+  land_size: '5.0 acres',
+  primary_crops: ['Wheat', 'Rice', 'Cotton'],
+  experience: '10 years',
+  phone: '+91 9876543210',
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
+});
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -31,26 +58,66 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(data);
   }, []);
 
+  const guestLogin = useCallback((name?: string, email?: string) => {
+    const guestUser = createMockUser(email || 'farmer@ekishaan.org', name || 'Farmer User');
+    const guestProf = createMockProfile(email || 'farmer@ekishaan.org', name || 'Farmer User');
+    setUser(guestUser);
+    setProfile(guestProf);
+    try {
+      localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify({ email: guestUser.email, name: guestProf.name }));
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, []);
+
   useEffect(() => {
+    // Check if guest user session exists in localStorage
+    try {
+      const savedGuest = localStorage.getItem(GUEST_STORAGE_KEY);
+      if (savedGuest) {
+        const { email, name } = JSON.parse(savedGuest);
+        setUser(createMockUser(email, name));
+        setProfile(createMockProfile(email, name));
+      }
+    } catch {
+      // Ignore
+    }
+
     if (!isSupabaseConfigured) {
       setLoading(false);
       return;
     }
 
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (session?.user) fetchProfile(session.user.id);
+      if (session?.user) {
+        setUser(session.user);
+        fetchProfile(session.user.id);
+      }
       setLoading(false);
     });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
       if (session?.user) {
+        setUser(session.user);
         fetchProfile(session.user.id);
       } else {
-        setProfile(null);
+        // If no supabase session, check guest session before clearing
+        try {
+          const savedGuest = localStorage.getItem(GUEST_STORAGE_KEY);
+          if (savedGuest) {
+            const { email, name } = JSON.parse(savedGuest);
+            setUser(createMockUser(email, name));
+            setProfile(createMockProfile(email, name));
+          } else {
+            setUser(null);
+            setProfile(null);
+          }
+        } catch {
+          setUser(null);
+          setProfile(null);
+        }
       }
       setLoading(false);
     });
@@ -67,36 +134,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signup = async (name: string, email: string, password: string, location?: string) => {
-    assertConfigured();
+    if (!isSupabaseConfigured) {
+      guestLogin(name, email);
+      return { needsEmailConfirmation: false };
+    }
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: { data: { display_name: name, location } },
     });
     if (error) throw error;
-    // Supabase deliberately returns no error for a duplicate signup (to avoid
-    // leaking which emails are registered) — instead it returns a user object
-    // with an empty `identities` array. Surface that as a real error so it's
-    // never confused with "brand new signup, awaiting email confirmation".
     if (data.user && data.user.identities && data.user.identities.length === 0) {
       throw new Error('An account with this email already exists. Try logging in instead.');
     }
-    // A profile row is created automatically by the handle_new_user trigger
-    // (see supabase/schema.sql). If email confirmation is required, Supabase
-    // returns no session here — the caller should tell the user to check email.
     return { needsEmailConfirmation: !data.session };
   };
 
   const login = async (email: string, password: string) => {
-    assertConfigured();
+    if (!isSupabaseConfigured) {
+      guestLogin(undefined, email);
+      return;
+    }
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
   };
 
   const logout = async () => {
-    assertConfigured();
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
+    try {
+      localStorage.removeItem(GUEST_STORAGE_KEY);
+    } catch {
+      // Ignore
+    }
+    setUser(null);
+    setProfile(null);
+
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.auth.signOut();
+      } catch {
+        // Ignore signout error if session already gone
+      }
+    }
   };
 
   const resetPassword = async (email: string) => {
@@ -106,6 +184,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const updateProfile: AuthContextValue['updateProfile'] = async (patch) => {
+    if (user?.id === 'guest-farmer-id-101') {
+      setProfile((prev) => (prev ? { ...prev, ...patch } : createMockProfile()));
+      return;
+    }
     assertConfigured();
     if (!user) throw new Error('You must be logged in to update your profile.');
     const { data, error } = await supabase.from('profiles').update(patch).eq('id', user.id).select().single();
@@ -114,7 +196,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signup, login, logout, resetPassword, updateProfile }}>
+    <AuthContext.Provider value={{ user, profile, loading, signup, login, guestLogin, logout, resetPassword, updateProfile }}>
       {children}
     </AuthContext.Provider>
   );

@@ -15,13 +15,19 @@ const DEFAULT_SUPABASE_URL = 'https://mhdnygeskolhmcitupac.supabase.co';
 const DEFAULT_SUPABASE_ANON_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1oZG55Z2Vza29saG1jaXR1cGFjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY0NjM5NTUsImV4cCI6MjEwMjAzOTk1NX0.2pR8iGEixo5nfH5xPNcqjSYilVj2v8JHrokWxgVRgZw';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY;
+const envSupabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const envSupabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-// Kept for backwards compatibility with call sites (RequireAuth,
-// AuthContext) that still check this — now always true since we always have
-// at least the shared-project defaults above.
-export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
+const supabaseUrl = envSupabaseUrl || DEFAULT_SUPABASE_URL;
+const supabaseAnonKey = envSupabaseAnonKey || DEFAULT_SUPABASE_ANON_KEY;
+
+// Only treat Supabase as configured when valid non-placeholder URL and anon key exist
+export const isSupabaseConfigured = Boolean(
+  supabaseUrl &&
+  supabaseAnonKey &&
+  supabaseUrl !== 'https://your-project-ref.supabase.co' &&
+  !supabaseUrl.includes('placeholder')
+);
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
