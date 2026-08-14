@@ -57,7 +57,14 @@ export default function Index() {
 
   // Show onboarding if no farmer profile yet
   if (!farmer) {
-    return <FarmerOnboarding onComplete={handleOnboardingComplete} />;
+    return (
+      <FarmerOnboarding
+        onComplete={handleOnboardingComplete}
+        defaultName={authProfile?.name || authUser?.email?.split('@')[0] || 'Farmer'}
+        defaultLocation={authProfile?.location || 'Ludhiana, Punjab'}
+        defaultState={authProfile?.state || 'Punjab'}
+      />
+    );
   }
 
   // Display name: prefer auth profile > onboarding name
