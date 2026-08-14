@@ -1,3 +1,6 @@
+import { PUNJAB_DATASET_FALLBACK } from './soilService';
+import { computeCropRecommendations } from './cropOfflineEngine';
+
 export interface CropFactors {
   soilMatch: number;
   nutrientBalance: number;
@@ -53,28 +56,35 @@ export interface CropRecommendationResponse {
   };
   aiAdvisory: string;
   recommendations: CropRecommendation[];
+  /** 'live' = computed just now from the backend's real soil+weather feed. 'estimated' = computed locally (see cropOfflineEngine.ts) because the backend wasn't reachable. */
+  source: 'live' | 'estimated';
 }
 
 const API_BASE = '/api/crops';
 
 /**
- * Fetches AI crop recommendations for a district from the live agronomic
- * scoring engine (real soil data + live Open-Meteo weather). Returns `null`
- * on any failure instead of masking it with static numbers — the caller is
- * responsible for showing a genuine loading/error state so nothing on
- * screen is ever a number the backend didn't actually compute.
+ * Fetches AI crop recommendations for a district. Tries the live backend
+ * first (real soil data + live Open-Meteo weather). If it's unreachable —
+ * e.g. a static frontend-only deployment with no Express/FastAPI behind it —
+ * falls back to computing the same scoring model locally
+ * (cropOfflineEngine.ts) from the district's curated soil baseline, so the
+ * page always shows a real, per-district-computed result instead of an
+ * error. The response always says which source produced it.
  */
-export async function fetchCropRecommendations(district: string): Promise<CropRecommendationResponse | null> {
+export async function fetchCropRecommendations(district: string): Promise<CropRecommendationResponse> {
   try {
     const res = await fetch(`${API_BASE}/recommendation/${encodeURIComponent(district)}`);
     if (!res.ok) throw new Error(`HTTP error ${res.status}`);
     const data = await res.json();
     if (data.success && Array.isArray(data.recommendations) && data.recommendations.length > 0) {
-      return data as CropRecommendationResponse;
+      return { ...(data as CropRecommendationResponse), source: 'live' };
     }
     throw new Error('Malformed response from crop recommendation engine');
   } catch (error) {
-    console.error(`[cropService] Could not fetch crop recommendations for ${district}:`, error);
-    return null;
+    console.warn(`[cropService] Live backend unavailable for ${district}, using offline estimate:`, error);
+    const matchKey =
+      Object.keys(PUNJAB_DATASET_FALLBACK).find((k) => k.toLowerCase() === district.toLowerCase()) || 'Ludhiana';
+    const geo = PUNJAB_DATASET_FALLBACK[matchKey];
+    return { ...computeCropRecommendations(geo), source: 'estimated' };
   }
 }

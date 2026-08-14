@@ -4,7 +4,6 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import {
   Sprout,
@@ -14,8 +13,8 @@ import {
   BarChart3,
   Clock,
   Sparkles,
-  AlertCircle,
-  RefreshCw,
+  Wifi,
+  WifiOff,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -57,7 +56,6 @@ export default function CropGrowth() {
   const [selectedDistrict, setSelectedDistrict] = useState<string>('Ludhiana');
   const [cropData, setCropData] = useState<CropRecommendationResponse | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchDistricts().then(setDistricts).catch(() => setDistricts([]));
@@ -65,13 +63,11 @@ export default function CropGrowth() {
 
   const loadCrops = useCallback(async (district: string) => {
     setIsLoading(true);
-    setError(null);
+    // fetchCropRecommendations always resolves — it falls back to a locally
+    // computed estimate (cropOfflineEngine.ts) when the live backend isn't
+    // reachable, so there's no error branch to handle here.
     const data = await fetchCropRecommendations(district);
-    if (data) {
-      setCropData(data);
-    } else {
-      setError(`Could not reach the AI crop recommendation engine for ${district}. It combines live soil data with real-time weather, so no results are shown until it responds.`);
-    }
+    setCropData(data);
     setIsLoading(false);
   }, []);
 
@@ -102,21 +98,6 @@ export default function CropGrowth() {
     return <LoadingSkeleton />;
   }
 
-  if (error && !cropData) {
-    return (
-      <Alert variant="destructive">
-        <AlertCircle className="h-5 w-5" />
-        <AlertTitle>Crop Recommendation Engine Unavailable</AlertTitle>
-        <AlertDescription className="space-y-3">
-          <p>{error}</p>
-          <Button size="sm" variant="outline" onClick={() => loadCrops(selectedDistrict)} className="gap-2">
-            <RefreshCw className="w-3.5 h-3.5" /> Retry
-          </Button>
-        </AlertDescription>
-      </Alert>
-    );
-  }
-
   if (!cropData) return null;
 
   return (
@@ -142,6 +123,16 @@ export default function CropGrowth() {
                 Season: {cropData.season}
               </Badge>
 
+              {cropData.source === 'live' ? (
+                <Badge variant="outline" className="gap-1 text-xs border-emerald-300 text-emerald-700">
+                  <Wifi className="w-3 h-3" /> Live
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="gap-1 text-xs border-amber-300 text-amber-700" title="The live recommendation engine wasn't reachable, so this is computed locally from this district's curated soil baseline.">
+                  <WifiOff className="w-3 h-3" /> Estimated
+                </Badge>
+              )}
+
               <div className="flex items-center gap-2">
                 <Label className="text-sm font-semibold text-gray-700">District:</Label>
                 <select
@@ -161,13 +152,6 @@ export default function CropGrowth() {
           </div>
         </CardHeader>
       </Card>
-
-      {error && (
-        <Alert className="border-amber-300 bg-amber-50 text-amber-900">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>Showing the last successful result for {selectedDistrict} — {error}</AlertDescription>
-        </Alert>
-      )}
 
       {/* AI Advisory Summary Box */}
       <Alert className="bg-gradient-to-r from-emerald-50 to-teal-50 border-emerald-300 shadow-sm">
