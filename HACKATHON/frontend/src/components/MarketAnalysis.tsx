@@ -1,6 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -14,8 +18,14 @@ import {
   Store,
   CalendarClock,
   ShieldAlert,
+  Pencil,
+  CheckCircle2,
+  PiggyBank,
+  ReceiptText,
+  Wallet,
+  BarChart3,
 } from 'lucide-react';
-import { fetchMarketPrices, type CropPriceInfo } from '@/services/marketService';
+import { fetchMarketPrices, getMandiComparison, getUpcomingFestivals, type CropPriceInfo } from '@/services/marketService';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 interface MarketAnalysisProps {
@@ -27,9 +37,9 @@ interface MarketAnalysisProps {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function confidenceLabel(c: CropPriceInfo['forecastConfidence']) {
-  if (c === 'high')   return { label: 'High confidence',   color: 'bg-green-100 text-green-800' };
-  if (c === 'medium') return { label: 'Medium confidence', color: 'bg-yellow-100 text-yellow-800' };
-  return               { label: 'Estimate only',           color: 'bg-orange-100 text-orange-800' };
+  if (c === 'high')   return { label: 'High confidence',    color: 'bg-green-100 text-green-800' };
+  if (c === 'medium') return { label: 'Seasonal estimate',  color: 'bg-blue-100 text-blue-800'   };
+  return               { label: 'Rough estimate',           color: 'bg-orange-100 text-orange-800' };
 }
 
 function trendIcon(trend: CropPriceInfo['trend']) {
@@ -91,7 +101,7 @@ function PriceTrendsTab({ data }: { data: CropPriceInfo[] }) {
             </div>
             <CardDescription className="flex items-center gap-1 text-sm">
               <Store className="w-3.5 h-3.5" />
-              {crop.market}, {crop.district} · Updated: {crop.lastUpdated}
+              {crop.market} · Season: {crop.lastUpdated}
             </CardDescription>
           </CardHeader>
 
@@ -146,11 +156,11 @@ function PriceForecastTab({ data }: { data: CropPriceInfo[] }) {
       {/* Uncertainty disclaimer — shown once at the top */}
       <Alert className="border-amber-300 bg-amber-50">
         <ShieldAlert className="h-4 w-4 text-amber-600" />
-        <AlertTitle className="text-amber-800">Important: These are estimates, not guarantees</AlertTitle>
+        <AlertTitle className="text-amber-800">These are seasonal estimates, not guarantees</AlertTitle>
         <AlertDescription className="text-amber-700 text-sm">
-          Price forecasts are based on seasonal patterns and historical mandi data. Actual prices depend
-          on weather, arrivals, festivals, and other market factors. Always check your local mandi before
-          making a final decision.
+          Prices are based on historical Punjab mandi patterns across harvest and sowing seasons.
+          They reflect typical price movements — not today's exact mandi rate.
+          Always check your local mandi before making a final selling decision.
         </AlertDescription>
       </Alert>
 
@@ -242,59 +252,379 @@ function PriceForecastTab({ data }: { data: CropPriceInfo[] }) {
 }
 
 // ─── Profit Analysis Tab ──────────────────────────────────────────────────────
-// Kept from original but now uses live prices
+// Farmer inputs actual investment and revenue; profit + ROI calculated live.
+
+interface CropFinancials {
+  investment: string;
+  revenue: string;
+}
+
+const PROFIT_STORAGE_KEY = 'agrismart_profit_data';
+
+function loadProfitData(): Record<string, CropFinancials> {
+  try {
+    const raw = localStorage.getItem(PROFIT_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch { return {}; }
+}
+
+function saveProfitData(data: Record<string, CropFinancials>) {
+  localStorage.setItem(PROFIT_STORAGE_KEY, JSON.stringify(data));
+}
+
 function ProfitAnalysisTab({ data }: { data: CropPriceInfo[] }) {
+  const [financials, setFinancials] = useState<Record<string, CropFinancials>>(
+    () => loadProfitData()
+  );
+  const [editingCrop, setEditingCrop] = useState<string | null>(
+    data.find((c) => !loadProfitData()[c.cropName])?.cropName ?? null
+  );
+
+  useEffect(() => { saveProfitData(financials); }, [financials]);
+
+  function get(cropName: string): CropFinancials {
+    return financials[cropName] ?? { investment: '', revenue: '' };
+  }
+
+  function update(cropName: string, field: keyof CropFinancials, value: string) {
+    if (value !== '' && !/^\d+$/.test(value)) return;
+    setFinancials((prev) => ({ ...prev, [cropName]: { ...get(cropName), [field]: value } }));
+  }
+
+  function hasFilled(cropName: string) {
+    const f = get(cropName);
+    return f.investment !== '' || f.revenue !== '';
+  }
+
+  const totalInv    = data.reduce((s, c) => s + (parseInt(get(c.cropName).investment) || 0), 0);
+  const totalRev    = data.reduce((s, c) => s + (parseInt(get(c.cropName).revenue)    || 0), 0);
+  const totalProfit = totalRev - totalInv;
+  const totalROI    = totalInv > 0 ? (totalProfit / totalInv) * 100 : 0;
+  const hasSummary  = data.some((c) => hasFilled(c.cropName));
+
   return (
     <div className="space-y-4">
       <Alert className="border-blue-200 bg-blue-50">
-        <AlertCircle className="h-4 w-4 text-blue-600" />
-        <AlertTitle className="text-blue-800">Based on current mandi prices</AlertTitle>
+        <ReceiptText className="h-4 w-4 text-blue-600" />
+        <AlertTitle className="text-blue-800">Enter your actual numbers</AlertTitle>
         <AlertDescription className="text-blue-700 text-sm">
-          Enter your actual investment and expected yield in your profile to get personalised profit calculations.
+          Add how much you spent and how much you earned for each crop.
+          We will calculate your profit and return on investment (ROI).
         </AlertDescription>
       </Alert>
 
       {data.map((crop) => {
-        // Simple per-acre estimate for illustration (assumes 1 acre)
-        const yieldPerAcre: Record<string, number> = {
-          quintal: 20,
-          kg: 1000,
-          piece: 2000,
-        };
-        const estYield = yieldPerAcre[crop.unit] ?? 20;
-        const estRevenue = crop.currentPrice * estYield;
+        const f          = get(crop.cropName);
+        const investment = parseInt(f.investment) || 0;
+        const revenue    = parseInt(f.revenue)    || 0;
+        const profit     = revenue - investment;
+        const roi        = investment > 0 ? (profit / investment) * 100 : 0;
+        const isEditing  = editingCrop === crop.cropName;
+        const filled     = hasFilled(crop.cropName);
 
         return (
-          <Card key={crop.cropName}>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">{crop.cropName}</CardTitle>
-              <CardDescription>Estimated for 1 acre at today's mandi price</CardDescription>
+          <Card key={crop.cropName} className={`transition-all ${isEditing ? 'ring-2 ring-green-400' : ''}`}>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CardTitle className="text-base">{crop.cropName}</CardTitle>
+                  {filled && !isEditing && (
+                    <Badge className={profit >= 0 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
+                      {profit >= 0 ? '✅ Profit' : '❌ Loss'}
+                    </Badge>
+                  )}
+                </div>
+                <Button
+                  variant="outline" size="sm" className="text-xs"
+                  onClick={() => setEditingCrop(isEditing ? null : crop.cropName)}
+                >
+                  {isEditing
+                    ? <><CheckCircle2 className="w-3.5 h-3.5 mr-1 text-green-600" /> Done</>
+                    : <><Pencil className="w-3.5 h-3.5 mr-1" /> {filled ? 'Edit' : 'Enter data'}</>
+                  }
+                </Button>
+              </div>
+            </CardHeader>
+
+            <CardContent className="space-y-4">
+              {isEditing && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-xl">
+                  <div className="space-y-1.5">
+                    <Label htmlFor={`inv-${crop.cropName}`} className="text-sm font-medium text-gray-700">
+                      💸 Total Investment (₹)
+                    </Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-medium">₹</span>
+                      <Input
+                        id={`inv-${crop.cropName}`}
+                        placeholder="e.g. 45000"
+                        value={f.investment}
+                        onChange={(e) => update(crop.cropName, 'investment', e.target.value)}
+                        className="pl-7 h-11"
+                        inputMode="numeric"
+                      />
+                    </div>
+                    <p className="text-xs text-gray-400">Seeds + fertilizer + labour + other costs</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor={`rev-${crop.cropName}`} className="text-sm font-medium text-gray-700">
+                      💰 Total Revenue Earned (₹)
+                    </Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-medium">₹</span>
+                      <Input
+                        id={`rev-${crop.cropName}`}
+                        placeholder="e.g. 84000"
+                        value={f.revenue}
+                        onChange={(e) => update(crop.cropName, 'revenue', e.target.value)}
+                        className="pl-7 h-11"
+                        inputMode="numeric"
+                      />
+                    </div>
+                    <p className="text-xs text-gray-400">Total amount received from selling this crop</p>
+                  </div>
+                </div>
+              )}
+
+              {filled && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="rounded-xl bg-blue-50 p-3 text-center">
+                    <PiggyBank className="w-5 h-5 text-blue-500 mx-auto mb-1" />
+                    <p className="text-xs text-gray-500">Investment</p>
+                    <p className="font-bold text-blue-700 mt-0.5 text-sm">
+                      {investment > 0 ? `₹${investment.toLocaleString('en-IN')}` : '—'}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-green-50 p-3 text-center">
+                    <ReceiptText className="w-5 h-5 text-green-500 mx-auto mb-1" />
+                    <p className="text-xs text-gray-500">Revenue</p>
+                    <p className="font-bold text-green-700 mt-0.5 text-sm">
+                      {revenue > 0 ? `₹${revenue.toLocaleString('en-IN')}` : '—'}
+                    </p>
+                  </div>
+                  <div className={`rounded-xl p-3 text-center ${profit >= 0 ? 'bg-emerald-50' : 'bg-red-50'}`}>
+                    <Wallet className={`w-5 h-5 mx-auto mb-1 ${profit >= 0 ? 'text-emerald-500' : 'text-red-500'}`} />
+                    <p className="text-xs text-gray-500">Net Profit</p>
+                    <p className={`font-bold mt-0.5 text-sm ${profit >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+                      {investment > 0 && revenue > 0 ? `${profit >= 0 ? '+' : ''}₹${profit.toLocaleString('en-IN')}` : '—'}
+                    </p>
+                  </div>
+                  <div className={`rounded-xl p-3 text-center ${roi >= 0 ? 'bg-purple-50' : 'bg-red-50'}`}>
+                    <BarChart3 className={`w-5 h-5 mx-auto mb-1 ${roi >= 0 ? 'text-purple-500' : 'text-red-500'}`} />
+                    <p className="text-xs text-gray-500">ROI</p>
+                    <p className={`font-bold mt-0.5 text-sm ${roi >= 0 ? 'text-purple-700' : 'text-red-700'}`}>
+                      {investment > 0 && revenue > 0 ? `${roi >= 0 ? '+' : ''}${roi.toFixed(1)}%` : '—'}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {filled && investment > 0 && revenue > 0 && (
+                <div className={`rounded-xl p-3 text-sm ${
+                  profit >= 0
+                    ? 'bg-green-50 border border-green-200 text-green-800'
+                    : 'bg-red-50 border border-red-200 text-red-800'
+                }`}>
+                  {profit >= 0
+                    ? <>✅ You made a profit of <strong>₹{profit.toLocaleString('en-IN')}</strong> on {crop.cropName}. For every ₹100 invested, you earned back ₹{(100 + roi).toFixed(0)}.</>
+                    : <>⚠️ You had a loss of <strong>₹{Math.abs(profit).toLocaleString('en-IN')}</strong> on {crop.cropName}. For every ₹100 invested, you got back ₹{(100 + roi).toFixed(0)}.</>
+                  }
+                </div>
+              )}
+
+              {!filled && !isEditing && (
+                <p className="text-sm text-gray-400 text-center py-2">
+                  Tap <strong>Enter data</strong> above to add your investment and revenue.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })}
+
+      {hasSummary && (
+        <Card className="bg-gradient-to-r from-gray-800 to-gray-900 text-white">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">📊 Total Season Summary</CardTitle>
+            <CardDescription className="text-gray-400 text-xs">Across all your crops</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="text-center">
+                <p className="text-xs text-gray-400">Total Invested</p>
+                <p className="text-lg font-bold text-blue-300 mt-0.5">₹{totalInv.toLocaleString('en-IN')}</p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs text-gray-400">Total Revenue</p>
+                <p className="text-lg font-bold text-green-300 mt-0.5">₹{totalRev.toLocaleString('en-IN')}</p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs text-gray-400">Net Profit</p>
+                <p className={`text-lg font-bold mt-0.5 ${totalProfit >= 0 ? 'text-emerald-300' : 'text-red-400'}`}>
+                  {totalProfit >= 0 ? '+' : ''}₹{totalProfit.toLocaleString('en-IN')}
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs text-gray-400">Overall ROI</p>
+                <p className={`text-lg font-bold mt-0.5 ${totalROI >= 0 ? 'text-purple-300' : 'text-red-400'}`}>
+                  {totalROI >= 0 ? '+' : ''}{totalROI.toFixed(1)}%
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ─── Where to Sell Tab ────────────────────────────────────────────────────────
+// Compares 5 Punjab mandis: mandi price, transport cost, net you get.
+function WhereToSellTab({ data }: { data: CropPriceInfo[] }) {
+  const comparisons = getMandiComparison(data);
+
+  return (
+    <div className="space-y-5">
+      <Alert className="border-blue-200 bg-blue-50">
+        <Store className="h-4 w-4 text-blue-600" />
+        <AlertTitle className="text-blue-800">Which mandi gives you the most money?</AlertTitle>
+        <AlertDescription className="text-blue-700 text-sm">
+          We compare price and transport cost across 5 Punjab mandis so you know
+          exactly where to take your crop.
+        </AlertDescription>
+      </Alert>
+
+      {comparisons.map((comp) => {
+        const best = comp.options.find((o) => o.isBest)!;
+        return (
+          <Card key={comp.cropName}>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <IndianRupee className="w-4 h-4 text-green-600" />
+                {comp.cropName}
+              </CardTitle>
+              <CardDescription className="text-sm">
+                Best option: <strong className="text-green-700">{best.name} Mandi</strong>
+                {' '}— you get <strong className="text-green-700">₹{best.netRealization.toLocaleString('en-IN')}</strong> per {comp.unit} after transport
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                <div className="rounded-lg bg-blue-50 p-3 text-center">
-                  <p className="text-xs text-gray-500">Today's price</p>
-                  <p className="font-bold text-blue-700 mt-1">₹{crop.currentPrice.toLocaleString('en-IN')}/{crop.unit}</p>
+              <div className="space-y-2">
+                <div className="grid grid-cols-4 gap-2 text-xs font-semibold text-gray-500 uppercase tracking-wide px-3">
+                  <span>Mandi</span>
+                  <span className="text-right">Price</span>
+                  <span className="text-right">Transport</span>
+                  <span className="text-right">You Get</span>
                 </div>
-                <div className="rounded-lg bg-green-50 p-3 text-center">
-                  <p className="text-xs text-gray-500">Est. yield / acre</p>
-                  <p className="font-bold text-green-700 mt-1">{estYield.toLocaleString('en-IN')} {crop.unit}</p>
+                {comp.options.map((opt) => (
+                  <div
+                    key={opt.name}
+                    className={`grid grid-cols-4 gap-2 items-center rounded-xl px-3 py-2.5 text-sm ${
+                      opt.isBest
+                        ? 'bg-green-50 border-2 border-green-400 font-semibold'
+                        : 'bg-gray-50 border border-gray-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      {opt.isBest && <span className="text-green-600">⭐</span>}
+                      <span className={opt.isBest ? 'text-green-800' : 'text-gray-700'}>
+                        {opt.name}
+                      </span>
+                    </div>
+                    <span className="text-right text-gray-700">₹{opt.price.toLocaleString('en-IN')}</span>
+                    <span className="text-right text-red-600">−₹{opt.transportCostPerQ}</span>
+                    <span className={`text-right font-bold ${opt.isBest ? 'text-green-700' : 'text-gray-800'}`}>
+                      ₹{opt.netRealization.toLocaleString('en-IN')}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-gray-400 mt-3">
+                Transport cost is per {comp.unit}. Distance estimated from Ludhiana area.
+              </p>
+            </CardContent>
+          </Card>
+        );
+      })}
+    </div>
+  );
+}
+
+
+// ─── Festival Calendar Tab ───────────────────────────────────────────────────────────────────
+// Simple upcoming festivals list with crop price impact.
+function FestivalCalendarTab({ farmerCrops }: { farmerCrops: string[] }) {
+  const festivals = getUpcomingFestivals(6);
+  const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  const impactColor = (i: string) =>
+    i === 'high'   ? 'bg-green-100 text-green-800 border-green-300' :
+    i === 'medium' ? 'bg-amber-100 text-amber-800 border-amber-300' :
+                     'bg-gray-100 text-gray-600 border-gray-300';
+
+  const impactLabel = (i: string) =>
+    i === 'high' ? '📈 High impact' : i === 'medium' ? '➡️ Medium' : '➡️ Low';
+
+  return (
+    <div className="space-y-4">
+      <Alert className="border-purple-200 bg-purple-50">
+        <CalendarClock className="h-4 w-4 text-purple-600" />
+        <AlertTitle className="text-purple-800">Upcoming festivals &amp; price impact</AlertTitle>
+        <AlertDescription className="text-purple-700 text-sm">
+          Festivals increase demand for certain crops and push prices up.
+          Plan your selling around these dates.
+        </AlertDescription>
+      </Alert>
+
+      {festivals.map((fest) => {
+        // Check if any of the farmer's crops are in this festival
+        const relevantCrops = fest.crops.filter((c) =>
+          farmerCrops.some((fc) => fc.toLowerCase() === c.toLowerCase())
+        );
+        const isRelevant = relevantCrops.length > 0;
+
+        return (
+          <Card key={fest.name} className={isRelevant ? 'ring-2 ring-purple-300' : ''}>
+            <CardContent className="pt-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-bold text-gray-800 text-base">🎉 {fest.name}</h3>
+                    <span className="text-xs text-gray-400">
+                      {MONTH_NAMES[(fest as any).month]} {(fest as any).approxDay}
+                    </span>
+                    {isRelevant && (
+                      <Badge className="bg-purple-100 text-purple-800 text-xs">Your crop!</Badge>
+                    )}
+                  </div>
+                  <p className="text-sm text-gray-600 mt-1">{fest.reason}</p>
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {fest.crops.map((c) => (
+                      <span
+                        key={c}
+                        className={`text-xs px-2 py-0.5 rounded-full border ${
+                          farmerCrops.some((fc) => fc.toLowerCase() === c.toLowerCase())
+                            ? 'bg-purple-100 text-purple-800 border-purple-300 font-semibold'
+                            : 'bg-gray-100 text-gray-500 border-gray-200'
+                        }`}
+                      >
+                        {c}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-                <div className="rounded-lg bg-emerald-50 p-3 text-center">
-                  <p className="text-xs text-gray-500">Est. revenue / acre</p>
-                  <p className="font-bold text-emerald-700 mt-1">₹{estRevenue.toLocaleString('en-IN')}</p>
-                </div>
-                <div className="rounded-lg bg-purple-50 p-3 text-center">
-                  <p className="text-xs text-gray-500">14-day outlook</p>
-                  <p className={`font-bold mt-1 ${crop.forecast14d >= crop.currentPrice ? 'text-green-600' : 'text-red-600'}`}>
-                    {crop.forecast14d >= crop.currentPrice ? '▲' : '▼'} ₹{Math.abs(crop.forecast14d - crop.currentPrice).toLocaleString('en-IN')}
-                  </p>
-                </div>
+                <span className={`text-xs px-2 py-1 rounded-lg border whitespace-nowrap ${impactColor(fest.impact)}`}>
+                  {impactLabel(fest.impact)}
+                </span>
               </div>
             </CardContent>
           </Card>
         );
       })}
+
+      <p className="text-xs text-gray-400 text-center">
+        Crops highlighted in purple are the ones you grow. Plan to sell just before these festivals for best prices.
+      </p>
     </div>
   );
 }
@@ -395,15 +725,19 @@ export default function MarketAnalysis({
 
       {/* ── Tabs ── */}
       <Tabs defaultValue="trends" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="trends">Price Trends</TabsTrigger>
           <TabsTrigger value="forecast">Price Forecast</TabsTrigger>
+          <TabsTrigger value="sell">Where to Sell</TabsTrigger>
+          <TabsTrigger value="festivals">Festivals</TabsTrigger>
           <TabsTrigger value="profit">Profit Analysis</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="trends"   className="mt-4"><PriceTrendsTab   data={crops} /></TabsContent>
-        <TabsContent value="forecast" className="mt-4"><PriceForecastTab data={crops} /></TabsContent>
-        <TabsContent value="profit"   className="mt-4"><ProfitAnalysisTab data={crops} /></TabsContent>
+        <TabsContent value="trends"    className="mt-4"><PriceTrendsTab    data={crops} /></TabsContent>
+        <TabsContent value="forecast"  className="mt-4"><PriceForecastTab  data={crops} /></TabsContent>
+        <TabsContent value="sell"      className="mt-4"><WhereToSellTab    data={crops} /></TabsContent>
+        <TabsContent value="festivals" className="mt-4"><FestivalCalendarTab farmerCrops={primaryCrops} /></TabsContent>
+        <TabsContent value="profit"    className="mt-4"><ProfitAnalysisTab  data={crops} /></TabsContent>
       </Tabs>
     </div>
   );
