@@ -63,7 +63,8 @@ export default function FarmerOnboarding({
   defaultState = 'Punjab',
   defaultLocation = 'Ludhiana, Punjab'
 }: Props) {
-  const [selectedCrops, setSelectedCrops] = useState<string[]>(['Wheat', 'Rice']);
+  // Start with empty selected crops so nothing is highlighted beforehand
+  const [selectedCrops, setSelectedCrops] = useState<string[]>([]);
   const [cropError, setCropError] = useState('');
   const [isDone, setIsDone] = useState(false);
 
@@ -76,7 +77,7 @@ export default function FarmerOnboarding({
 
   function handleFinish() {
     if (selectedCrops.length === 0) {
-      setCropError('Please select at least one crop.');
+      setCropError('Please select at least one crop before continuing.');
       return;
     }
     const profile: FarmerProfile = {
@@ -113,18 +114,10 @@ export default function FarmerOnboarding({
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-600 via-green-600 to-teal-700 flex items-center justify-center p-4">
       <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full p-8 space-y-5">
-        {/* Progress line */}
-        <div className="flex items-center gap-2">
-          <div className="h-1.5 bg-green-500 rounded-full flex-1" />
-          <div className="h-1.5 bg-green-500 rounded-full flex-1" />
-          <div className="h-1.5 bg-green-500 rounded-full flex-1" />
-          <span className="text-xs text-gray-400 font-medium ml-1">3/3</span>
-        </div>
-
         {/* Header */}
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
-            <Sprout className="w-5 h-5 text-green-700" />
+          <div className="w-12 h-12 bg-green-100 rounded-2xl flex items-center justify-center flex-shrink-0">
+            <Sprout className="w-6 h-6 text-green-700" />
           </div>
           <div>
             <h2 className="text-xl font-bold text-gray-900">Which crops do you grow?</h2>
