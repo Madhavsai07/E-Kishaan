@@ -19,6 +19,9 @@ import {
   Clock,
   Sparkles,
   CloudSun,
+  Bug,
+  FlaskConical,
+  Leaf as LeafOrganic,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -173,10 +176,11 @@ export default function CropGrowth() {
 
       {/* Analytics Tabs */}
       <Tabs defaultValue="rankings" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="rankings">Top 5 Crop Rankings</TabsTrigger>
           <TabsTrigger value="visualizations">Suitability Charts</TabsTrigger>
           <TabsTrigger value="timeline">Growth Stage Timeline</TabsTrigger>
+          <TabsTrigger value="disease">Disease & Pest Alerts</TabsTrigger>
         </TabsList>
 
         {/* Rankings Tab */}
@@ -336,6 +340,85 @@ export default function CropGrowth() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Disease & Pest Alerts Tab */}
+        <TabsContent value="disease" className="space-y-4">
+          <Alert className="bg-gradient-to-r from-red-50 to-orange-50 border-red-200 shadow-sm">
+            <Bug className="h-5 w-5 text-red-600" />
+            <AlertTitle className="text-red-950 font-bold">Weather & Soil-Based Disease Risk Forecast</AlertTitle>
+            <AlertDescription className="text-red-900 mt-1 text-sm leading-relaxed">
+              Risk levels below are computed from live temperature ({cropData.weather?.temp}°C), humidity ({cropData.weather?.humidity}%),
+              rainfall ({cropData.weather?.rainfall}mm) and soil nitrogen ({cropData.soilHealth?.nitrogen} kg/ha) for {selectedDistrict}.
+              Always confirm with your local agriculture extension officer before applying any chemical.
+            </AlertDescription>
+          </Alert>
+
+          {(cropData.recommendations || []).map((c) => (
+            <Card key={c.crop} className="border-gray-100 shadow-sm">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                  <Sprout className="w-5 h-5 text-emerald-600" />
+                  {c.crop}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {c.diseaseRisks && c.diseaseRisks.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {c.diseaseRisks.map((d) => (
+                      <div
+                        key={d.disease}
+                        className={
+                          d.riskLevel === 'High'
+                            ? 'p-4 rounded-xl border border-red-300 bg-red-50'
+                            : d.riskLevel === 'Medium'
+                            ? 'p-4 rounded-xl border border-amber-300 bg-amber-50'
+                            : 'p-4 rounded-xl border border-gray-200 bg-gray-50'
+                        }
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <Bug className="w-4 h-4 text-gray-600 shrink-0" />
+                            <span className="font-bold text-gray-900">{d.disease}</span>
+                          </div>
+                          <Badge
+                            className={
+                              d.riskLevel === 'High'
+                                ? 'bg-red-600 text-white'
+                                : d.riskLevel === 'Medium'
+                                ? 'bg-amber-500 text-white'
+                                : 'bg-gray-400 text-white'
+                            }
+                          >
+                            {d.riskLevel} Risk
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">{d.type} • {d.symptoms}</p>
+                        <p className="text-xs text-gray-600 italic mt-2">{d.reason}</p>
+
+                        <div className="mt-3 space-y-1.5 text-sm">
+                          <div className="flex items-start gap-2">
+                            <FlaskConical className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                            <span><span className="font-semibold text-gray-800">Pesticide: </span>{d.pesticide}</span>
+                          </div>
+                          <div className="flex items-start gap-2">
+                            <LeafOrganic className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                            <span><span className="font-semibold text-gray-800">Organic option: </span>{d.organicAlternative}</span>
+                          </div>
+                          <div className="flex items-start gap-2">
+                            <ShieldCheck className="w-4 h-4 text-gray-500 shrink-0 mt-0.5" />
+                            <span><span className="font-semibold text-gray-800">Precaution: </span>{d.precaution}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500">No common disease/pest data available for this crop yet.</p>
+                )}
+              </CardContent>
+            </Card>
+          ))}
         </TabsContent>
       </Tabs>
     </div>

@@ -1,3 +1,7 @@
+import { getDiseaseRisks, DiseaseRisk } from '@/lib/diseaseRules';
+
+export type { DiseaseRisk };
+
 export interface CropRecommendation {
   crop: string;
   category: string;
@@ -13,6 +17,7 @@ export interface CropRecommendation {
   risk: string;
   confidence: number;
   profitabilityScore: number;
+  diseaseRisks?: DiseaseRisk[];
 }
 
 export interface CropRecommendationResponse {
@@ -131,6 +136,16 @@ export const FALLBACK_CROP_DATA: Record<string, CropRecommendationResponse> = {
 
 const API_BASE = '/api/crops';
 
+function withDiseaseRisks(data: CropRecommendationResponse): CropRecommendationResponse {
+  return {
+    ...data,
+    recommendations: (data.recommendations || []).map((c) => ({
+      ...c,
+      diseaseRisks: getDiseaseRisks(c.crop, data.weather, data.soilHealth.nitrogen),
+    })),
+  };
+}
+
 export async function fetchCropRecommendations(district: string = 'Ludhiana'): Promise<CropRecommendationResponse> {
   const matchKey = Object.keys(FALLBACK_CROP_DATA).find(
     (k) => k.toLowerCase() === district.toLowerCase()
@@ -143,10 +158,10 @@ export async function fetchCropRecommendations(district: string = 'Ludhiana'): P
     if (!res.ok) throw new Error(`HTTP error ${res.status}`);
     const data = await res.json();
     if (data.recommendations && data.recommendations.length > 0) {
-      return data;
+      return withDiseaseRisks(data);
     }
   } catch (error) {
     console.warn(`Backend API unavailable, using instant crop recommendation fallback for ${district}.`);
   }
-  return { ...fallback, district };
+  return withDiseaseRisks({ ...fallback, district });
 }
