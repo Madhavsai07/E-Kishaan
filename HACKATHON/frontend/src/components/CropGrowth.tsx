@@ -1,24 +1,21 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/SelectUI';
+import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import {
   Sprout,
-  Leaf,
-  Calendar,
   Droplets,
-  TrendingUp,
   Award,
-  Zap,
   ShieldCheck,
   BarChart3,
   Clock,
   Sparkles,
-  CloudSun,
+  AlertCircle,
+  RefreshCw,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -38,43 +35,89 @@ import {
 
 import {
   fetchCropRecommendations,
-  FALLBACK_CROP_DATA,
-  CropRecommendationResponse,
-  CropRecommendation,
+  type CropRecommendationResponse,
+  type CropRecommendation,
 } from '@/services/cropService';
-import { DEFAULT_DISTRICTS_LIST } from '@/services/soilService';
+import { fetchDistricts, type DistrictSummary } from '@/services/soilService';
+
+function LoadingSkeleton() {
+  return (
+    <div className="space-y-6 animate-pulse">
+      <div className="h-28 bg-gray-200 rounded-xl" />
+      <div className="h-24 bg-gray-200 rounded-xl" />
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {[1, 2, 3].map((i) => <div key={i} className="h-56 bg-gray-200 rounded-xl" />)}
+      </div>
+    </div>
+  );
+}
 
 export default function CropGrowth() {
+  const [districts, setDistricts] = useState<DistrictSummary[]>([]);
   const [selectedDistrict, setSelectedDistrict] = useState<string>('Ludhiana');
-  const [cropData, setCropData] = useState<CropRecommendationResponse>(FALLBACK_CROP_DATA['Ludhiana']);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [cropData, setCropData] = useState<CropRecommendationResponse | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    async function loadCrops() {
-      setIsLoading(true);
-      const data = await fetchCropRecommendations(selectedDistrict);
-      if (data) setCropData(data);
-      setIsLoading(false);
+    fetchDistricts().then(setDistricts).catch(() => setDistricts([]));
+  }, []);
+
+  const loadCrops = useCallback(async (district: string) => {
+    setIsLoading(true);
+    setError(null);
+    const data = await fetchCropRecommendations(district);
+    if (data) {
+      setCropData(data);
+    } else {
+      setError(`Could not reach the AI crop recommendation engine for ${district}. It combines live soil data with real-time weather, so no results are shown until it responds.`);
     }
-    loadCrops();
-  }, [selectedDistrict]);
+    setIsLoading(false);
+  }, []);
 
-  const topCrop: CropRecommendation | undefined = cropData.recommendations?.[0];
+  useEffect(() => {
+    loadCrops(selectedDistrict);
+  }, [selectedDistrict, loadCrops]);
 
-  const barChartData = (cropData.recommendations || []).map((c) => ({
+  const topCrop: CropRecommendation | undefined = cropData?.recommendations?.[0];
+
+  const barChartData = (cropData?.recommendations || []).map((c) => ({
     name: c.crop.split(' ')[0],
     score: c.score,
     confidence: c.confidence,
     profitability: c.profitabilityScore,
   }));
 
-  const radarChartData = [
-    { subject: 'Soil pH Match', A: topCrop ? Math.min(100, topCrop.score + 2) : 90, fullMark: 100 },
-    { subject: 'NPK Balance', A: topCrop ? topCrop.confidence : 92, fullMark: 100 },
-    { subject: 'Water Needs', A: topCrop ? 88 : 85, fullMark: 100 },
-    { subject: 'Market Demand', A: topCrop ? topCrop.profitabilityScore : 90, fullMark: 100 },
-    { subject: 'Climate Risk', A: topCrop ? 100 - (topCrop.risk === 'Low' ? 10 : 30) : 90, fullMark: 100 },
-  ];
+  const radarChartData = topCrop
+    ? [
+        { subject: 'Soil Match', A: topCrop.factors.soilMatch, fullMark: 100 },
+        { subject: 'Nutrient Balance', A: topCrop.factors.nutrientBalance, fullMark: 100 },
+        { subject: 'Climate Suitability', A: topCrop.factors.climateSuitability, fullMark: 100 },
+        { subject: 'Seasonal Fit', A: topCrop.factors.seasonalFit, fullMark: 100 },
+        { subject: 'Market Potential', A: topCrop.factors.marketPotential, fullMark: 100 },
+      ]
+    : [];
+
+  if (isLoading && !cropData) {
+    return <LoadingSkeleton />;
+  }
+
+  if (error && !cropData) {
+    return (
+      <Alert variant="destructive">
+        <AlertCircle className="h-5 w-5" />
+        <AlertTitle>Crop Recommendation Engine Unavailable</AlertTitle>
+        <AlertDescription className="space-y-3">
+          <p>{error}</p>
+          <Button size="sm" variant="outline" onClick={() => loadCrops(selectedDistrict)} className="gap-2">
+            <RefreshCw className="w-3.5 h-3.5" /> Retry
+          </Button>
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
+  if (!cropData) return null;
 
   return (
     <div className="space-y-6">
@@ -90,13 +133,13 @@ export default function CropGrowth() {
                 </CardTitle>
               </div>
               <CardDescription className="text-gray-600 mt-1">
-                Data-driven crop selection combining Soil NPK, Open-Meteo climate, and ICAR agricultural standards
+                Data-driven crop selection combining live Soil NPK, real-time Open-Meteo climate, and ICAR agricultural standards
               </CardDescription>
             </div>
 
             <div className="flex items-center gap-3">
               <Badge className="bg-emerald-600 text-white text-sm py-1.5 px-3">
-                Season: {cropData.season || 'Rabi'}
+                Season: {cropData.season}
               </Badge>
 
               <div className="flex items-center gap-2">
@@ -104,9 +147,10 @@ export default function CropGrowth() {
                 <select
                   value={selectedDistrict}
                   onChange={(e) => setSelectedDistrict(e.target.value)}
-                  className="px-3 py-2 bg-white border border-emerald-300 rounded-md font-bold text-emerald-900 shadow-sm text-sm"
+                  disabled={isLoading}
+                  className="px-3 py-2 bg-white border border-emerald-300 rounded-md font-bold text-emerald-900 shadow-sm text-sm disabled:opacity-60"
                 >
-                  {DEFAULT_DISTRICTS_LIST.map((d) => (
+                  {districts.map((d) => (
                     <option key={d.name} value={d.name}>
                       {d.name}
                     </option>
@@ -118,11 +162,18 @@ export default function CropGrowth() {
         </CardHeader>
       </Card>
 
+      {error && (
+        <Alert className="border-amber-300 bg-amber-50 text-amber-900">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>Showing the last successful result for {selectedDistrict} — {error}</AlertDescription>
+        </Alert>
+      )}
+
       {/* AI Advisory Summary Box */}
       <Alert className="bg-gradient-to-r from-emerald-50 to-teal-50 border-emerald-300 shadow-sm">
         <Sparkles className="h-5 w-5 text-emerald-600" />
         <AlertTitle className="text-emerald-950 font-bold text-lg flex items-center gap-2">
-          AI Agricultural Advisor for {selectedDistrict}
+          AI Agricultural Advisor for {cropData.district}
         </AlertTitle>
         <AlertDescription className="text-emerald-900 mt-1 text-base leading-relaxed font-medium">
           {cropData.aiAdvisory}
@@ -266,9 +317,9 @@ export default function CropGrowth() {
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
                   <ShieldCheck className="w-5 h-5 text-teal-600" />
-                  Top Crop Radar Analysis vs District Factors
+                  Top Crop Factor Analysis (Live Computed)
                 </CardTitle>
-                <CardDescription>Evaluating {topCrop?.crop || 'Top Crop'}</CardDescription>
+                <CardDescription>Real agronomic sub-scores for {topCrop?.crop || 'the top crop'}</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="h-72">
@@ -293,47 +344,47 @@ export default function CropGrowth() {
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <Clock className="w-5 h-5 text-emerald-600" />
-                Agronomic Growth Timeline ({topCrop?.crop || 'Wheat'})
+                Agronomic Growth Timeline ({topCrop?.crop || 'Top Crop'})
               </CardTitle>
-              <CardDescription>Stages from Land Preparation to Peak Harvest</CardDescription>
+              <CardDescription>
+                Stages sized from {topCrop?.crop || 'this crop'}'s actual {topCrop?.growingDays ?? '–'}-day growing cycle, with dosing computed from this district's live soil nutrients
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 text-center">
-                <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl space-y-2">
-                  <div className="w-8 h-8 mx-auto bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">1</div>
-                  <div className="font-bold text-gray-900">Sowing</div>
-                  <div className="text-xs text-gray-500">Day 0 - 15</div>
-                  <p className="text-[11px] text-emerald-800">Apply Basal DAP & Organic Compost</p>
-                </div>
-
-                <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl space-y-2">
-                  <div className="w-8 h-8 mx-auto bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">2</div>
-                  <div className="font-bold text-gray-900">Vegetative</div>
-                  <div className="text-xs text-gray-500">Day 15 - 45</div>
-                  <p className="text-[11px] text-emerald-800">Apply 1st Split Urea & First Irrigation</p>
-                </div>
-
-                <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl space-y-2">
-                  <div className="w-8 h-8 mx-auto bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">3</div>
-                  <div className="font-bold text-gray-900">Flowering</div>
-                  <div className="text-xs text-gray-500">Day 45 - 75</div>
-                  <p className="text-[11px] text-emerald-800">Monitor Pest Activity & 2nd Irrigation</p>
-                </div>
-
-                <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl space-y-2">
-                  <div className="w-8 h-8 mx-auto bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">4</div>
-                  <div className="font-bold text-gray-900">Grain Filling</div>
-                  <div className="text-xs text-gray-500">Day 75 - 105</div>
-                  <p className="text-[11px] text-emerald-800">Maintain Soil Moisture & Micronutrient Spray</p>
-                </div>
-
-                <div className="p-4 bg-amber-50 border border-amber-300 rounded-xl space-y-2">
-                  <div className="w-8 h-8 mx-auto bg-amber-600 text-white rounded-full flex items-center justify-center font-bold">5</div>
-                  <div className="font-bold text-gray-900">Harvest</div>
-                  <div className="text-xs text-gray-500">Day 105 - 135</div>
-                  <p className="text-[11px] text-amber-800">Peak Moisture Content for Maximum Price</p>
-                </div>
+                {(topCrop?.growthStages || []).map((stage) => (
+                  <div
+                    key={stage.stage}
+                    className={`p-4 border rounded-xl space-y-2 ${
+                      stage.stage === topCrop?.growthStages.length
+                        ? 'bg-amber-50 border-amber-300'
+                        : 'bg-emerald-50 border-emerald-200'
+                    }`}
+                  >
+                    <div
+                      className={`w-8 h-8 mx-auto text-white rounded-full flex items-center justify-center font-bold ${
+                        stage.stage === topCrop?.growthStages.length ? 'bg-amber-600' : 'bg-emerald-600'
+                      }`}
+                    >
+                      {stage.stage}
+                    </div>
+                    <div className="font-bold text-gray-900">{stage.name}</div>
+                    <div className="text-xs text-gray-500">Day {stage.dayStart} - {stage.dayEnd}</div>
+                    <p className={`text-[11px] ${stage.stage === topCrop?.growthStages.length ? 'text-amber-800' : 'text-emerald-800'}`}>
+                      {stage.advice}
+                    </p>
+                  </div>
+                ))}
               </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-blue-100 bg-blue-50/50">
+            <CardContent className="p-4 flex items-start gap-3">
+              <Droplets className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+              <p className="text-sm text-blue-900">
+                Total seasonal water requirement for {topCrop?.crop}: <span className="font-bold">{topCrop?.waterRequirement}</span> over {topCrop?.growingDays} days — irrigation scheduling above is derived from this figure, not a fixed template.
+              </p>
             </CardContent>
           </Card>
         </TabsContent>
