@@ -94,7 +94,7 @@ export default function FarmerOnboarding({
 
   if (isDone) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-green-600 via-emerald-600 to-teal-700 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-gradient-to-br from-emerald-600 via-green-600 to-teal-700 flex items-center justify-center p-4">
         <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 text-center space-y-4">
           <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto">
             <CheckCircle2 className="w-10 h-10 text-green-600" />
@@ -111,18 +111,28 @@ export default function FarmerOnboarding({
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-600 via-emerald-600 to-teal-700 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-emerald-600 via-green-600 to-teal-700 flex items-center justify-center p-4">
       <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full p-8 space-y-5">
+        {/* Progress line */}
+        <div className="flex items-center gap-2">
+          <div className="h-1.5 bg-green-500 rounded-full flex-1" />
+          <div className="h-1.5 bg-green-500 rounded-full flex-1" />
+          <div className="h-1.5 bg-green-500 rounded-full flex-1" />
+          <span className="text-xs text-gray-400 font-medium ml-1">3/3</span>
+        </div>
+
+        {/* Header */}
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 bg-green-100 rounded-2xl flex items-center justify-center">
-            <Sprout className="w-6 h-6 text-green-700" />
+          <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
+            <Sprout className="w-5 h-5 text-green-700" />
           </div>
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">Which crops do you grow?</h2>
+            <h2 className="text-xl font-bold text-gray-900">Which crops do you grow?</h2>
             <p className="text-sm text-gray-500">Select all that apply — you can change this later</p>
           </div>
         </div>
 
+        {/* Crop Grid */}
         <div className="grid grid-cols-2 gap-2.5 max-h-80 overflow-y-auto pr-1">
           {CROP_OPTIONS.map((crop) => {
             const selected = selectedCrops.includes(crop.name);
@@ -150,6 +160,7 @@ export default function FarmerOnboarding({
           })}
         </div>
 
+        {/* Selected Crop Badges */}
         {selectedCrops.length > 0 && (
           <div className="flex flex-wrap gap-1.5 pt-1">
             {selectedCrops.map((c) => (
@@ -163,8 +174,9 @@ export default function FarmerOnboarding({
 
         {cropError && <p className="text-red-500 text-sm font-medium">{cropError}</p>}
 
+        {/* Start Farming Button */}
         <Button
-          className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white h-12 text-base font-semibold rounded-xl shadow-lg shadow-green-600/20"
+          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white h-12 text-base font-semibold rounded-xl shadow-lg shadow-emerald-600/20"
           onClick={handleFinish}
         >
           Start Farming 🌾
