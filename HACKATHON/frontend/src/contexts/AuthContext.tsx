@@ -1,145 +1,120 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
-import { apiFetch, setAccessToken, refreshAccessToken } from '@/lib/apiClient';
-
-/**
- * Minimal auth-identity shape. Kept close to Supabase's old `User` type
- * (`id`, `email`, `user_metadata.full_name`) purely so existing consumers
- * (UserProfile.tsx, Index.tsx) that read those exact fields didn't need to
- * change when auth moved off Supabase onto our own JWT/MongoDB backend.
- */
-export interface AuthUser {
-  id: string;
-  email: string;
-  user_metadata?: { full_name?: string };
-}
-
-/** Mirrors the old Supabase `profiles` row shape 1:1 — see backend/src/controllers/authController.ts's toProfileResponse(). */
-export interface Profile {
-  id: string;
-  name: string | null;
-  email: string | null;
-  location: string | null;
-  land_size: string | null;
-  primary_crops: string[];
-  experience: string | null;
-  phone: string | null;
-  role?: 'farmer' | 'buyer';
-  created_at: string;
-  updated_at: string;
-}
-
-interface AuthPayload {
-  success: true;
-  accessToken: string;
-  user: { id: string; email: string };
-  profile: Profile;
-}
-
-interface MePayload {
-  success: true;
-  user: { id: string; email: string };
-  profile: Profile;
-}
+import type { User } from '@supabase/supabase-js';
+import { supabase, isSupabaseConfigured, type Profile } from '@/lib/supabase';
 
 interface AuthContextValue {
-  user: AuthUser | null;
+  user: User | null;
   profile: Profile | null;
   loading: boolean;
-  /** Kept for interface-compatibility with the old Supabase flow (email confirmation) — this backend logs the user in immediately, so it always resolves `false`. */
+  /** True once signup succeeds but Supabase requires email confirmation before a session exists. */
   signup: (name: string, email: string, password: string, location?: string) => Promise<{ needsEmailConfirmation: boolean }>;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
-  /** Completes a "forgot password" / migrated-account setup link (see SetPassword.tsx) and logs the user in. */
-  setNewPassword: (token: string, password: string) => Promise<void>;
   updateProfile: (patch: Partial<Pick<Profile, 'name' | 'location' | 'land_size' | 'primary_crops' | 'experience' | 'phone'>>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-function toAuthUser(id: string, email: string, name: string | null): AuthUser {
-  return { id, email, user_metadata: name ? { full_name: name } : undefined };
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // On mount: try a silent refresh using the httpOnly cookie (survives page
-  // reloads even though the access token itself lives only in memory).
+  const fetchProfile = useCallback(async (userId: string) => {
+    const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
+    if (error) {
+      // eslint-disable-next-line no-console
+      console.error('[supabase] Failed to load profile:', error.message);
+      return;
+    }
+    setProfile(data);
+  }, []);
+
   useEffect(() => {
-    (async () => {
-      const token = await refreshAccessToken();
-      if (token) {
-        try {
-          const me = await apiFetch<MePayload>('/api/auth/me');
-          setUser(toAuthUser(me.user.id, me.user.email, me.profile.name));
-          setProfile(me.profile);
-        } catch {
-          setAccessToken(null);
-        }
+    if (!isSupabaseConfigured) {
+      setLoading(false);
+      return;
+    }
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      if (session?.user) fetchProfile(session.user.id);
+      setLoading(false);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        fetchProfile(session.user.id);
+      } else {
+        setProfile(null);
       }
       setLoading(false);
-    })();
-  }, []);
-
-  const signup = useCallback(async (name: string, email: string, password: string, location?: string) => {
-    const data = await apiFetch<AuthPayload>('/api/auth/signup', {
-      method: 'POST',
-      body: JSON.stringify({ name, email, password, location }),
     });
-    setUser(toAuthUser(data.user.id, data.user.email, data.profile.name));
-    setProfile(data.profile);
-    return { needsEmailConfirmation: false };
-  }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const data = await apiFetch<AuthPayload>('/api/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ email, password }),
-    });
-    setUser(toAuthUser(data.user.id, data.user.email, data.profile.name));
-    setProfile(data.profile);
-  }, []);
+    return () => subscription.unsubscribe();
+  }, [fetchProfile]);
 
-  const logout = useCallback(async () => {
-    try {
-      await apiFetch('/api/auth/logout', { method: 'POST', allowRefreshRetry: false });
-    } finally {
-      setAccessToken(null);
-      setUser(null);
-      setProfile(null);
+  const assertConfigured = () => {
+    if (!isSupabaseConfigured) {
+      throw new Error(
+        'Supabase is not configured yet. Add your project keys to .env.local (see .env.local.example).'
+      );
     }
-  }, []);
+  };
 
-  const resetPassword = useCallback(async (email: string) => {
-    await apiFetch('/api/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) });
-  }, []);
-
-  const setNewPassword = useCallback(async (token: string, password: string) => {
-    const data = await apiFetch<AuthPayload>('/api/auth/set-password', {
-      method: 'POST',
-      body: JSON.stringify({ token, password }),
+  const signup = async (name: string, email: string, password: string, location?: string) => {
+    assertConfigured();
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { display_name: name, location } },
     });
-    setUser(toAuthUser(data.user.id, data.user.email, data.profile.name));
-    setProfile(data.profile);
-  }, []);
+    if (error) throw error;
+    // Supabase deliberately returns no error for a duplicate signup (to avoid
+    // leaking which emails are registered) — instead it returns a user object
+    // with an empty `identities` array. Surface that as a real error so it's
+    // never confused with "brand new signup, awaiting email confirmation".
+    if (data.user && data.user.identities && data.user.identities.length === 0) {
+      throw new Error('An account with this email already exists. Try logging in instead.');
+    }
+    // A profile row is created automatically by the handle_new_user trigger
+    // (see supabase/schema.sql). If email confirmation is required, Supabase
+    // returns no session here — the caller should tell the user to check email.
+    return { needsEmailConfirmation: !data.session };
+  };
 
-  const updateProfile: AuthContextValue['updateProfile'] = useCallback(
-    async (patch) => {
-      if (!user) throw new Error('You must be logged in to update your profile.');
-      const data = await apiFetch<{ success: true; profile: Profile }>('/api/auth/me', {
-        method: 'PUT',
-        body: JSON.stringify(patch),
-      });
-      setProfile(data.profile);
-    },
-    [user],
-  );
+  const login = async (email: string, password: string) => {
+    assertConfigured();
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+  };
+
+  const logout = async () => {
+    assertConfigured();
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
+  };
+
+  const resetPassword = async (email: string) => {
+    assertConfigured();
+    const { error } = await supabase.auth.resetPasswordForEmail(email);
+    if (error) throw error;
+  };
+
+  const updateProfile: AuthContextValue['updateProfile'] = async (patch) => {
+    assertConfigured();
+    if (!user) throw new Error('You must be logged in to update your profile.');
+    const { data, error } = await supabase.from('profiles').update(patch).eq('id', user.id).select().single();
+    if (error) throw error;
+    setProfile(data);
+  };
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signup, login, logout, resetPassword, setNewPassword, updateProfile }}>
+    <AuthContext.Provider value={{ user, profile, loading, signup, login, logout, resetPassword, updateProfile }}>
       {children}
     </AuthContext.Provider>
   );

@@ -11,7 +11,7 @@ import LanguageToggle from '@/components/LanguageToggle';
 import { Leaf, Eye, EyeOff, ArrowRight, Info } from 'lucide-react';
 import { toast } from '@/components/ui/sonner';
 import { useAuth } from '@/contexts/AuthContext';
-import { isApiUrlConfigured } from '@/lib/env';
+import { isSupabaseConfigured } from '@/lib/supabase';
 
 export default function Login() {
   const { t } = useTranslation();
@@ -34,8 +34,8 @@ export default function Login() {
     e.preventDefault();
     setIsSubmitting(true);
 
-    if (!isApiUrlConfigured) {
-      toast.info('Backend URL is not configured yet. Entering Dashboard in Guest Mode.');
+    if (!isSupabaseConfigured) {
+      toast.info('Supabase is not configured yet. Entering Dashboard in Guest Mode.');
       navigate('/dashboard');
       setIsSubmitting(false);
       return;
@@ -53,8 +53,8 @@ export default function Login() {
   };
 
   const handleForgotPassword = async () => {
-    if (!isApiUrlConfigured) {
-      toast.info('Backend URL is not configured. Redirecting to Dashboard.');
+    if (!isSupabaseConfigured) {
+      toast.info('Supabase is not configured. Redirecting to Dashboard.');
       navigate('/dashboard');
       return;
     }
@@ -92,13 +92,13 @@ export default function Login() {
             <CardDescription className="text-lg">{t('auth.login.subtitle')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            {!isApiUrlConfigured && (
+            {!isSupabaseConfigured && (
               <Alert className="border-blue-300 bg-blue-50 text-blue-900">
                 <Info className="h-5 w-5 text-blue-600" />
-                <AlertTitle className="font-semibold text-blue-950">Backend URL Not Configured</AlertTitle>
+                <AlertTitle className="font-semibold text-blue-950">Supabase Backend Unconfigured</AlertTitle>
                 <AlertDescription className="text-sm mt-1 space-y-3">
                   <p className="text-blue-800">
-                    <code className="bg-blue-100 px-1 py-0.5 rounded text-xs font-mono text-blue-900">VITE_API_URL</code> is not set in <code className="bg-blue-100 px-1 py-0.5 rounded text-xs font-mono text-blue-900">.env.local</code>. You can access all dashboard modules directly in Guest Mode!
+                    Supabase keys are not set in <code className="bg-blue-100 px-1 py-0.5 rounded text-xs font-mono text-blue-900">.env.local</code>. You can access all dashboard modules directly in Guest Mode!
                   </p>
                   <Button
                     type="button"
@@ -121,7 +121,7 @@ export default function Login() {
                   placeholder="you@example.com"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  required={isApiUrlConfigured}
+                  required={isSupabaseConfigured}
                   className="text-lg h-12"
                 />
               </div>
@@ -135,7 +135,7 @@ export default function Login() {
                     placeholder="Enter your password"
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    required={isApiUrlConfigured}
+                    required={isSupabaseConfigured}
                     className="text-lg h-12 pr-11"
                   />
                   <button
@@ -164,7 +164,7 @@ export default function Login() {
                 disabled={isSubmitting}
                 className="w-full h-12 text-lg bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
               >
-                {isSubmitting ? t('auth.login.submitting') : isApiUrlConfigured ? t('auth.login.submit') : t('common.openDashboard')}
+                {isSubmitting ? t('auth.login.submitting') : isSupabaseConfigured ? t('auth.login.submit') : t('common.openDashboard')}
               </Button>
             </form>
 

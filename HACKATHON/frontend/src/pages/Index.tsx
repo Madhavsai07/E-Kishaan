@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -6,31 +6,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Skeleton } from '@/components/ui/skeleton';
 import LanguageToggle from '@/components/LanguageToggle';
 import { Bell, CloudRain, Leaf, TrendingUp, Zap, LogOut, Map, Edit3 } from 'lucide-react';
+import WeatherDashboard from '@/components/WeatherDashboard';
+import SoilFertility from '@/components/SoilFertility';
+import CropGrowth from '@/components/CropGrowth';
+import MarketAnalysis from '@/components/MarketAnalysis';
+import FrankensteinSolver from '@/components/FrankensteinSolver';
+import FarmRoadmap from '@/components/FarmRoadmap';
 import FarmerOnboarding, { clearProfile } from '@/components/FarmerOnboarding';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/components/ui/sonner';
-
-// Each dashboard tab is its own chunk — a visitor only downloads the (often
-// chart-heavy) code for a module once they actually open that tab, instead
-// of all six shipping in the initial bundle.
-const WeatherDashboard = lazy(() => import('@/components/WeatherDashboard'));
-const SoilFertility = lazy(() => import('@/components/SoilFertility'));
-const CropGrowth = lazy(() => import('@/components/CropGrowth'));
-const MarketAnalysis = lazy(() => import('@/components/MarketAnalysis'));
-const FrankensteinSolver = lazy(() => import('@/components/FrankensteinSolver'));
-const FarmRoadmap = lazy(() => import('@/components/FarmRoadmap'));
-
-function TabFallback() {
-  return (
-    <div className="space-y-4">
-      <Skeleton className="h-10 w-1/3" />
-      <Skeleton className="h-64 w-full" />
-    </div>
-  );
-}
 
 // ─── Farmer profile shape ────────────────────────────────────────────────────
 interface FarmerProfile {
@@ -252,9 +238,7 @@ export default function Index() {
                   <CardDescription>{t('dashboard.overview.next7Days') || 'Next 7 days forecast'}</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <Suspense fallback={<TabFallback />}>
-                    <WeatherDashboard compact={true} />
-                  </Suspense>
+                  <WeatherDashboard compact={true} />
                 </CardContent>
               </Card>
 
@@ -290,44 +274,32 @@ export default function Index() {
           </TabsContent>
 
           <TabsContent value="weather">
-            <Suspense fallback={<TabFallback />}>
-              <WeatherDashboard />
-            </Suspense>
+            <WeatherDashboard />
           </TabsContent>
 
           <TabsContent value="soil">
-            <Suspense fallback={<TabFallback />}>
-              <SoilFertility />
-            </Suspense>
+            <SoilFertility />
           </TabsContent>
 
           <TabsContent value="crops">
-            <Suspense fallback={<TabFallback />}>
-              <CropGrowth />
-            </Suspense>
+            <CropGrowth />
           </TabsContent>
 
           {/* Market — personalised with farmer's crops & state */}
           <TabsContent value="market">
-            <Suspense fallback={<TabFallback />}>
-              <MarketAnalysis
-                primaryCrops={farmer.primaryCrops}
-                state={farmer.state}
-              />
-            </Suspense>
+            <MarketAnalysis
+              primaryCrops={farmer.primaryCrops}
+              state={farmer.state}
+            />
           </TabsContent>
 
           {/* Farm Roadmap — friend's feature */}
           <TabsContent value="roadmap">
-            <Suspense fallback={<TabFallback />}>
-              <FarmRoadmap />
-            </Suspense>
+            <FarmRoadmap />
           </TabsContent>
 
           <TabsContent value="solver">
-            <Suspense fallback={<TabFallback />}>
-              <FrankensteinSolver />
-            </Suspense>
+            <FrankensteinSolver />
           </TabsContent>
         </Tabs>
       </main>

@@ -44,8 +44,6 @@ import {
   DistrictSoilReport,
   SoilHistoryPoint,
   DistrictComparisonData,
-  SoilRecommendations,
-  FertilizerRecommendation,
 } from '@/services/soilService';
 
 export default function SoilFertility() {
@@ -57,7 +55,7 @@ export default function SoilFertility() {
 
   const [soilReport, setSoilReport] = useState<DistrictSoilReport>(PUNJAB_DATASET_FALLBACK['Ludhiana']);
   const [history, setHistory] = useState<SoilHistoryPoint[]>([]);
-  const [recommendations, setRecommendations] = useState<SoilRecommendations | null>(null);
+  const [recommendations, setRecommendations] = useState<any>(null);
   const [comparisonData, setComparisonData] = useState<DistrictComparisonData | null>(null);
 
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
@@ -517,7 +515,7 @@ export default function SoilFertility() {
                     { name: 'DAP (Di-ammonium Phosphate)', dosage_kg_per_acre: 52, stage: 'Full dose at Sowing', frequency: 'Single' },
                     { name: 'MOP (Muriate of Potash)', dosage_kg_per_acre: 30, stage: 'Basal Dose at Sowing', frequency: 'Single' },
                     { name: 'Organic Vermicompost', dosage_kg_per_acre: 1000, stage: 'Land Preparation', frequency: 'Annual' },
-                  ]).map((f: FertilizerRecommendation, idx: number) => (
+                  ]).map((f: any, idx: number) => (
                     <div key={idx} className="p-3 bg-slate-50 border rounded-lg flex items-center justify-between">
                       <div>
                         <div className="font-semibold text-gray-900">{f.name || f.fertilizer_name}</div>

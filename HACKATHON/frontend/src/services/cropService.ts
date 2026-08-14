@@ -1,6 +1,5 @@
 import { PUNJAB_DATASET_FALLBACK } from './soilService';
 import { computeCropRecommendations } from './cropOfflineEngine';
-import { API_URL } from '@/lib/env';
 import { getDiseaseRisks, DiseaseRisk } from '@/lib/diseaseRules';
 
 export type { DiseaseRisk };
@@ -65,7 +64,7 @@ export interface CropRecommendationResponse {
   source: 'live' | 'estimated';
 }
 
-const API_BASE = `${API_URL}/api/crops`;
+const API_BASE = '/api/crops';
 
 function withDiseaseRisks(data: CropRecommendationResponse): CropRecommendationResponse {
   return {

@@ -1,5 +1,3 @@
-import { API_URL } from '@/lib/env';
-
 export interface FarmOnboardingProfile {
   farmerName: string;
   district: string;
@@ -116,7 +114,7 @@ export interface FarmChartsData {
   cropGrowthProgress: Array<{ week: string; heightCm: number; biomassIndex: number }>;
 }
 
-const API_BASE = `${API_URL}/api/farm`;
+const API_BASE = '/api/farm';
 
 export async function getFarmProfile(district?: string): Promise<FarmOnboardingProfile> {
   const query = district ? `?district=${encodeURIComponent(district)}` : '';

@@ -1,5 +1,3 @@
-import { API_URL } from '@/lib/env';
-
 export interface DistrictSummary {
   name: string;
   lat: number;
@@ -293,7 +291,7 @@ export const DEFAULT_DISTRICTS_LIST: DistrictSummary[] = Object.values(PUNJAB_DA
   recommendedCrop: d.recommendedCrop,
 }));
 
-const API_BASE = `${API_URL}/api/soil`;
+const API_BASE = '/api/soil';
 
 export async function fetchDistricts(): Promise<DistrictSummary[]> {
   try {
@@ -354,24 +352,7 @@ export async function fetchSoilHistory(district: string): Promise<SoilHistoryPoi
   }));
 }
 
-export interface FertilizerRecommendation {
-  name?: string;
-  fertilizer_name?: string;
-  dosage_kg_per_acre?: number;
-  dosageKgPerAcre?: number;
-  stage?: string;
-  application_stage?: string;
-  frequency: string;
-}
-
-export interface SoilRecommendations {
-  district: string;
-  fertilizers: FertilizerRecommendation[];
-  soilHealthScore: number;
-  irrigationSchedule: string;
-}
-
-export async function fetchSoilRecommendations(district: string): Promise<SoilRecommendations> {
+export async function fetchSoilRecommendations(district: string) {
   const matchKey = Object.keys(PUNJAB_DATASET_FALLBACK).find(
     (k) => k.toLowerCase() === district.toLowerCase()
   ) || 'Ludhiana';
@@ -380,7 +361,7 @@ export async function fetchSoilRecommendations(district: string): Promise<SoilRe
   try {
     const res = await fetch(`${API_BASE}/recommendation/${encodeURIComponent(district)}`);
     if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-    const data = await res.json() as { recommendations?: SoilRecommendations };
+    const data = await res.json();
     if (data.recommendations) return data.recommendations;
   } catch (error) {
     console.warn(`Backend API unavailable, building instant recommendation fallback for ${district}.`);
