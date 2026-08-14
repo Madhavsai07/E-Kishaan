@@ -111,7 +111,7 @@ export default function FarmerOnboarding({ onComplete }: Props) {
             <Leaf className="w-10 h-10 text-white" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">AgriSmart</h1>
+            <h1 className="text-3xl font-bold text-gray-900">E-Kisaan</h1>
             <p className="text-gray-500 mt-1">AI-Powered Farming Assistant</p>
           </div>
           <p className="text-gray-600 text-base leading-relaxed">
