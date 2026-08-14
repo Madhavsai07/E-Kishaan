@@ -1,5 +1,27 @@
-import { Request, Response } from 'express';
-import { PUNJAB_DISTRICTS_GEO, fetchDistrictWeather } from '../services/soilETL';
+/**
+ * Crop Growth — Offline Scoring Engine
+ * =====================================
+ * This is a client-side port of the exact same 9-factor agronomic scoring
+ * model used by the live backend (backend/src/controllers/cropController.ts)
+ * — same crop rules, same weights, same growth-stage math. Keep the two in
+ * sync if either changes.
+ *
+ * Why it exists: on a static deployment (e.g. Vercel hosting only this
+ * frontend build, no Express/FastAPI processes behind it), there is no
+ * `/api/crops/recommendation/:district` to call. Rather than showing an
+ * error or a single hardcoded dataset, this computes real per-district,
+ * per-crop results entirely offline, fed by `PUNJAB_DATASET_FALLBACK`
+ * (soilService.ts) — the same real per-district soil/weather baseline
+ * already used by the Soil Health module — so every district still gets
+ * genuinely different numbers instead of one district's data repeated.
+ *
+ * It's a *static* data source (no live weather API call), not fabricated
+ * output: the soil figures are the same curated per-district dataset used
+ * elsewhere in this app, and the scores/timelines are still computed from
+ * them via the real formula, not hand-typed per crop.
+ */
+import type { DistrictSoilReport } from './soilService';
+import type { CropRecommendation, CropRecommendationResponse, GrowthStage } from './cropService';
 
 interface AgronomicRule {
   cropName: string;
@@ -15,14 +37,6 @@ interface AgronomicRule {
   growingDays: number;
   avgYield: string;
   basePrice: number;
-}
-
-interface GrowthStage {
-  stage: number;
-  name: string;
-  dayStart: number;
-  dayEnd: number;
-  advice: string;
 }
 
 const CROP_RULES: AgronomicRule[] = [
@@ -43,10 +57,6 @@ const CROP_RULES: AgronomicRule[] = [
   { cropName: 'Summer Vegetables', category: 'Horticulture', minPh: 6.0, maxPh: 7.6, idealN: 85, idealP: 25, idealK: 175, minOc: 0.58, idealSeason: 'Zaid', waterReqMm: 310, growingDays: 70, avgYield: '70-90 quintal/acre', basePrice: 2200 },
 ];
 
-// Generic phenological split (% of total growing days) used to size each
-// stage's day-range per crop — sourced from ICAR crop-growth-stage guidance.
-// Applied to each crop's own `growingDays`, so every crop gets a genuinely
-// different timeline (Sugarcane's 330-day cycle vs. Peas' 75-day cycle).
 const STAGE_TEMPLATE: Array<{ name: string; startPct: number; endPct: number }> = [
   { name: 'Sowing & Land Preparation', startPct: 0, endPct: 0.08 },
   { name: 'Vegetative Growth', startPct: 0.08, endPct: 0.35 },
@@ -55,21 +65,18 @@ const STAGE_TEMPLATE: Array<{ name: string; startPct: number; endPct: number }> 
   { name: 'Maturity & Harvest', startPct: 0.85, endPct: 1.0 },
 ];
 
-function buildGrowthStages(
-  crop: AgronomicRule,
-  ureaKg: number,
-  dapKg: number,
-): GrowthStage[] {
+function buildGrowthStages(crop: AgronomicRule, ureaKg: number, dapKg: number): GrowthStage[] {
   const days = crop.growingDays;
   const firstSplitUrea = Math.round(ureaKg * 0.4);
   const secondSplitUrea = Math.max(0, ureaKg - firstSplitUrea);
+  const isHorticulture = crop.category === 'Vegetable' || crop.category === 'Horticulture';
 
   const adviceByStage: Record<string, string> = {
     'Sowing & Land Preparation': `Apply full DAP dose (${dapKg}kg/acre) and first Urea split (${firstSplitUrea}kg/acre) as basal fertilizer before/at sowing.`,
     'Vegetative Growth': `Irrigate to meet early-stage demand (crop needs ${crop.waterReqMm}mm total across the season) and apply the remaining Urea split (${secondSplitUrea}kg/acre).`,
     'Flowering': `Monitor closely for pest/disease pressure — this is the most yield-sensitive window for ${crop.cropName}. Maintain steady soil moisture.`,
-    'Grain / Fruit Filling': `Maintain consistent moisture through fill; a micronutrient (zinc/boron) foliar spray typically boosts ${crop.category === 'Vegetable' || crop.category === 'Horticulture' ? 'fruit set and quality' : 'grain weight'}.`,
-    'Maturity & Harvest': `Taper off irrigation. Target harvest at physiological maturity for ${crop.cropName} to maximize both ${crop.category === 'Vegetable' || crop.category === 'Horticulture' ? 'quality' : 'grain'} and market price (₹${crop.basePrice}/quintal benchmark).`,
+    'Grain / Fruit Filling': `Maintain consistent moisture through fill; a micronutrient (zinc/boron) foliar spray typically boosts ${isHorticulture ? 'fruit set and quality' : 'grain weight'}.`,
+    'Maturity & Harvest': `Taper off irrigation. Target harvest at physiological maturity for ${crop.cropName} to maximize both ${isHorticulture ? 'quality' : 'grain'} and market price (₹${crop.basePrice}/quintal benchmark).`,
   };
 
   return STAGE_TEMPLATE.map((stageDef, idx) => ({
@@ -82,74 +89,53 @@ function buildGrowthStages(
 }
 
 function getCurrentSeasonName(): 'Rabi' | 'Kharif' | 'Zaid' {
-  const month = new Date().getMonth() + 1; // 1-12
+  const month = new Date().getMonth() + 1;
   if ([11, 12, 1, 2, 3].includes(month)) return 'Rabi';
   if ([4, 5].includes(month)) return 'Zaid';
   return 'Kharif';
 }
 
-export async function getCropRecommendationsHandler(req: Request, res: Response) {
-  const districtName = (req.params.district || req.query.district || 'Ludhiana') as string;
-  const matchKey = Object.keys(PUNJAB_DISTRICTS_GEO).find(
-    (k) => k.toLowerCase() === districtName.toLowerCase()
-  ) || 'Ludhiana';
+const MAX_WATER_REQ_MM = Math.max(...CROP_RULES.map((c) => c.waterReqMm));
 
-  const geo = PUNJAB_DISTRICTS_GEO[matchKey];
-  const weather = await fetchDistrictWeather(geo.lat, geo.lng);
+/** Same weighted formula as cropController.ts (weights sum to exactly 1.0). `source` is attached by the caller (cropService.ts). */
+export function computeCropRecommendations(geo: DistrictSoilReport): Omit<CropRecommendationResponse, 'source'> {
   const currentSeason = getCurrentSeasonName();
+  const weather = geo.weather;
 
-  // Sugarcane (600mm) is the thirstiest crop in the table — used to normalize
-  // every crop's water requirement onto a comparable 0-1 scale for scoring.
-  const MAX_WATER_REQ_MM = Math.max(...CROP_RULES.map((c) => c.waterReqMm));
-
-  const scoredCrops = CROP_RULES.map((crop) => {
-    // 1. pH Factor (20%)
+  const scoredCrops: CropRecommendation[] = CROP_RULES.map((crop) => {
     let phScore = 100;
-    if (geo.ph < crop.minPh || geo.ph > crop.maxPh) {
-      phScore = Math.max(30, 100 - Math.abs(geo.ph - (crop.minPh + crop.maxPh) / 2) * 40);
+    if (geo.soilPh < crop.minPh || geo.soilPh > crop.maxPh) {
+      phScore = Math.max(30, 100 - Math.abs(geo.soilPh - (crop.minPh + crop.maxPh) / 2) * 40);
     }
 
-    // 2. Nitrogen (15%)
-    const nDiff = Math.abs(geo.nitrogen - crop.idealN);
+    const nDiff = Math.abs(geo.nutrients.nitrogen - crop.idealN);
     const nScore = Math.max(40, 100 - (nDiff / crop.idealN) * 50);
 
-    // 3. Phosphorus (10%)
-    const pDiff = Math.abs(geo.phosphorus - crop.idealP);
+    const pDiff = Math.abs(geo.nutrients.phosphorus - crop.idealP);
     const pScore = Math.max(40, 100 - (pDiff / crop.idealP) * 50);
 
-    // 4. Potassium (10%)
-    const kDiff = Math.abs(geo.potassium - crop.idealK);
+    const kDiff = Math.abs(geo.nutrients.potassium - crop.idealK);
     const kScore = Math.max(40, 100 - (kDiff / crop.idealK) * 50);
 
-    // 5. Organic Carbon (10%)
-    const ocScore = geo.oc >= crop.minOc ? 100 : Math.max(40, (geo.oc / crop.minOc) * 100);
+    const ocScore = geo.organicCarbon >= crop.minOc ? 100 : Math.max(40, (geo.organicCarbon / crop.minOc) * 100);
 
-    // 6. Weather Forecast (20%) — generic, crop-agnostic: penalizes deviation from
-    // a reasonable growing temperature and rewards live soil moisture tracking
-    // this crop's own water need (heavier feeders tolerate wetter conditions).
     const idealGrowingTempC = 28;
     const tempDeviation = Math.abs(weather.temp - idealGrowingTempC);
     let weatherScore = Math.max(35, 100 - tempDeviation * 3);
-    if (weather.temp > 40) weatherScore -= 10; // extreme heat stress, on top of deviation penalty
+    if (weather.temp > 40) weatherScore -= 10;
 
     const waterNeedRatio = crop.waterReqMm / MAX_WATER_REQ_MM;
     const moistureGap = Math.abs(weather.moisture / 100 - waterNeedRatio);
     weatherScore = Math.max(35, Math.round((weatherScore + Math.max(35, 100 - moistureGap * 130)) / 2));
 
-    // 7. Rainfall (5%) — excess rain hurts low-water crops, deficit hurts thirsty ones.
-    const rainfallVsNeed = weather.rainfall - crop.waterReqMm / 30; // rough daily-equivalent comparison
-    let rainfallScore = Math.max(40, 100 - Math.abs(rainfallVsNeed) * 4);
+    const rainfallVsNeed = weather.rainfall - crop.waterReqMm / 30;
+    const rainfallScore = Math.max(40, 100 - Math.abs(rainfallVsNeed) * 4);
 
-    // 8. Season Compatibility (5%)
     const seasonScore = crop.idealSeason === 'All' || crop.idealSeason === currentSeason ? 100 : 40;
 
-    // 9. Historical District Success (5%)
     const isPrimary = geo.recommendedCrop.toLowerCase().includes(crop.cropName.toLowerCase().split(' ')[0]);
     const historyScore = isPrimary ? 100 : 75;
 
-    // Weighted Total Score. Weights sum to exactly 1.0 (pH 20% + N 15% + P 10%
-    // + K 10% + OC 10% + Weather 20% + Rainfall 5% + Season 5% + History 5%)
-    // so totalScore is always a genuine 0-100 suitability percentage.
     const totalScore = Math.round(
       phScore * 0.20 +
       nScore * 0.15 +
@@ -159,7 +145,7 @@ export async function getCropRecommendationsHandler(req: Request, res: Response)
       weatherScore * 0.20 +
       rainfallScore * 0.05 +
       seasonScore * 0.05 +
-      historyScore * 0.05
+      historyScore * 0.05,
     );
 
     let status = 'Good';
@@ -168,9 +154,9 @@ export async function getCropRecommendationsHandler(req: Request, res: Response)
     else if (totalScore >= 55) status = 'Moderate';
     else status = 'Poor';
 
-    const urea = Math.max(30, Math.round((crop.idealN - geo.nitrogen * 0.7) * 1.2));
-    const dap = Math.max(25, Math.round((crop.idealP - geo.phosphorus * 0.8) * 1.4));
-    const profitabilityScore = Math.min(99, Math.round((totalScore * 0.7) + (crop.basePrice / 100)));
+    const urea = Math.max(30, Math.round((crop.idealN - geo.nutrients.nitrogen * 0.7) * 1.2));
+    const dap = Math.max(25, Math.round((crop.idealP - geo.nutrients.phosphorus * 0.8) * 1.4));
+    const profitabilityScore = Math.min(99, Math.round(totalScore * 0.7 + crop.basePrice / 100));
 
     return {
       crop: crop.cropName,
@@ -187,7 +173,6 @@ export async function getCropRecommendationsHandler(req: Request, res: Response)
       risk: totalScore >= 80 ? 'Low' : totalScore >= 65 ? 'Medium' : 'High',
       confidence: Math.min(98, Math.max(70, totalScore + 5)),
       profitabilityScore,
-      // Real computed sub-scores (not estimated) — drives the radar chart.
       factors: {
         soilMatch: Math.round((phScore + ocScore) / 2),
         nutrientBalance: Math.round((nScore + pScore + kScore) / 3),
@@ -199,27 +184,24 @@ export async function getCropRecommendationsHandler(req: Request, res: Response)
     };
   });
 
-  // Sort by score descending and pick Top 5
   scoredCrops.sort((a, b) => b.score - a.score);
   const topRecommendations = scoredCrops.slice(0, 5);
   const topCrop = topRecommendations[0];
 
-  const advisoryText = `Based on current ICAR standards, ${geo.name}'s soil pH (${geo.ph}), organic carbon (${geo.oc}%), available nitrogen (${geo.nitrogen} kg/ha), and live weather conditions (${weather.temp}°C, ${weather.moisture}% moisture), ${topCrop.crop} is highly recommended for cultivation this ${currentSeason} season with a suitability score of ${topCrop.score}/100. Expected yield is ${topCrop.expectedYield} with ${topCrop.risk.toLowerCase()} risk.`;
+  const aiAdvisory = `Based on ${geo.district}'s recorded soil pH (${geo.soilPh}), organic carbon (${geo.organicCarbon}%), available nitrogen (${geo.nutrients.nitrogen} kg/ha), and this district's typical seasonal climate (${weather.temp}°C, ${weather.moisture}% moisture), ${topCrop.crop} is the strongest fit for cultivation this ${currentSeason} season with a suitability score of ${topCrop.score}/100. Expected yield is ${topCrop.expectedYield} with ${topCrop.risk.toLowerCase()} risk.`;
 
-  return res.json({
-    success: true,
-    district: geo.name,
+  return {
+    district: geo.district,
     season: currentSeason,
     weather,
     soilHealth: {
-      ph: geo.ph,
-      oc: geo.oc,
-      nitrogen: geo.nitrogen,
-      phosphorus: geo.phosphorus,
-      potassium: geo.potassium,
+      ph: geo.soilPh,
+      oc: geo.organicCarbon,
+      nitrogen: geo.nutrients.nitrogen,
+      phosphorus: geo.nutrients.phosphorus,
+      potassium: geo.nutrients.potassium,
     },
-    aiAdvisory: advisoryText,
+    aiAdvisory,
     recommendations: topRecommendations,
-    allCrops: scoredCrops,
-  });
+  };
 }

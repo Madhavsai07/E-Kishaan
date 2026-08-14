@@ -1,6 +1,24 @@
+import { PUNJAB_DATASET_FALLBACK } from './soilService';
+import { computeCropRecommendations } from './cropOfflineEngine';
 import { getDiseaseRisks, DiseaseRisk } from '@/lib/diseaseRules';
 
 export type { DiseaseRisk };
+
+export interface CropFactors {
+  soilMatch: number;
+  nutrientBalance: number;
+  climateSuitability: number;
+  seasonalFit: number;
+  marketPotential: number;
+}
+
+export interface GrowthStage {
+  stage: number;
+  name: string;
+  dayStart: number;
+  dayEnd: number;
+  advice: string;
+}
 
 export interface CropRecommendation {
   crop: string;
@@ -17,6 +35,10 @@ export interface CropRecommendation {
   risk: string;
   confidence: number;
   profitabilityScore: number;
+  /** Real computed sub-scores from the 9-factor agronomic model — drives the radar chart. */
+  factors: CropFactors;
+  /** Per-crop growth-stage timeline, sized proportionally from this crop's actual growing-days. */
+  growthStages: GrowthStage[];
   diseaseRisks?: DiseaseRisk[];
 }
 
@@ -38,101 +60,9 @@ export interface CropRecommendationResponse {
   };
   aiAdvisory: string;
   recommendations: CropRecommendation[];
+  /** 'live' = computed just now from the backend's real soil+weather feed. 'estimated' = computed locally (see cropOfflineEngine.ts) because the backend wasn't reachable. */
+  source: 'live' | 'estimated';
 }
-
-// Instant dataset fallback for Punjab districts crop recommendations
-export const FALLBACK_CROP_DATA: Record<string, CropRecommendationResponse> = {
-  Ludhiana: {
-    district: 'Ludhiana',
-    season: 'Rabi',
-    weather: { temp: 28.5, rainfall: 0, humidity: 60, moisture: 45 },
-    soilHealth: { ph: 7.2, oc: 0.66, nitrogen: 95, phosphorus: 29, potassium: 185 },
-    aiAdvisory:
-      'The soil pH (7.2), high potassium level (185 kg/ha), and moderate weather conditions make Wheat and Potato highly suitable for cultivation this season in Ludhiana. Apply recommended NPK fertilizer split doses for optimal yield.',
-    recommendations: [
-      {
-        crop: 'Wheat (HD-2967)',
-        category: 'Cereal',
-        score: 95,
-        status: 'Excellent',
-        expectedYield: '24-26 quintal/acre',
-        waterRequirement: '380 mm',
-        growingDays: 135,
-        estimatedHarvestTime: '135 days (Rabi)',
-        fertilizer: 'Urea (115kg), DAP (50kg)',
-        marketDemand: 'Very High',
-        expectedPrice: '₹2425/quintal',
-        risk: 'Low',
-        confidence: 96,
-        profitabilityScore: 94,
-      },
-      {
-        crop: 'Potato (Kufri Pukhraj)',
-        category: 'Vegetable',
-        score: 89,
-        status: 'Excellent',
-        expectedYield: '140 quintal/acre',
-        waterRequirement: '350 mm',
-        growingDays: 90,
-        estimatedHarvestTime: '90 days (Rabi)',
-        fertilizer: 'Urea (95kg), DAP (55kg), MOP (35kg)',
-        marketDemand: 'High',
-        expectedPrice: '₹1450/quintal',
-        risk: 'Low',
-        confidence: 91,
-        profitabilityScore: 92,
-      },
-      {
-        crop: 'Mustard (Pusa Bold)',
-        category: 'Oilseed',
-        score: 84,
-        status: 'Good',
-        expectedYield: '10-12 quintal/acre',
-        waterRequirement: '240 mm',
-        growingDays: 110,
-        estimatedHarvestTime: '110 days (Rabi)',
-        fertilizer: 'Urea (65kg), Single Super Phosphate (50kg)',
-        marketDemand: 'High',
-        expectedPrice: '₹5650/quintal',
-        risk: 'Low',
-        confidence: 88,
-        profitabilityScore: 90,
-      },
-      {
-        crop: 'Peas (PB-89)',
-        category: 'Pulse',
-        score: 79,
-        status: 'Good',
-        expectedYield: '40 quintal/acre',
-        waterRequirement: '220 mm',
-        growingDays: 75,
-        estimatedHarvestTime: '75 days (Rabi)',
-        fertilizer: 'Urea (35kg), DAP (30kg)',
-        marketDemand: 'Moderate',
-        expectedPrice: '₹3200/quintal',
-        risk: 'Low',
-        confidence: 84,
-        profitabilityScore: 83,
-      },
-      {
-        crop: 'Barley (PL-891)',
-        category: 'Cereal',
-        score: 74,
-        status: 'Good',
-        expectedYield: '20 quintal/acre',
-        waterRequirement: '250 mm',
-        growingDays: 115,
-        estimatedHarvestTime: '115 days (Rabi)',
-        fertilizer: 'Urea (70kg), DAP (35kg)',
-        marketDemand: 'Moderate',
-        expectedPrice: '₹1950/quintal',
-        risk: 'Low',
-        confidence: 80,
-        profitabilityScore: 78,
-      },
-    ],
-  },
-};
 
 const API_BASE = '/api/crops';
 
@@ -146,22 +76,31 @@ function withDiseaseRisks(data: CropRecommendationResponse): CropRecommendationR
   };
 }
 
-export async function fetchCropRecommendations(district: string = 'Ludhiana'): Promise<CropRecommendationResponse> {
-  const matchKey = Object.keys(FALLBACK_CROP_DATA).find(
-    (k) => k.toLowerCase() === district.toLowerCase()
-  ) || 'Ludhiana';
-
-  const fallback = FALLBACK_CROP_DATA[matchKey] || FALLBACK_CROP_DATA['Ludhiana'];
-
+/**
+ * Fetches AI crop recommendations for a district. Tries the live backend
+ * first (real soil data + live Open-Meteo weather). If it's unreachable —
+ * e.g. a static frontend-only deployment with no Express/FastAPI behind it —
+ * falls back to computing the same scoring model locally
+ * (cropOfflineEngine.ts) from the district's curated soil baseline, so the
+ * page always shows a real, per-district-computed result instead of an
+ * error. The response always says which source produced it. Either way,
+ * each recommendation is annotated with rule-based disease/pest risk from
+ * the current weather and soil nitrogen (see lib/diseaseRules.ts).
+ */
+export async function fetchCropRecommendations(district: string): Promise<CropRecommendationResponse> {
   try {
     const res = await fetch(`${API_BASE}/recommendation/${encodeURIComponent(district)}`);
     if (!res.ok) throw new Error(`HTTP error ${res.status}`);
     const data = await res.json();
-    if (data.recommendations && data.recommendations.length > 0) {
-      return withDiseaseRisks(data);
+    if (data.success && Array.isArray(data.recommendations) && data.recommendations.length > 0) {
+      return withDiseaseRisks({ ...(data as CropRecommendationResponse), source: 'live' });
     }
+    throw new Error('Malformed response from crop recommendation engine');
   } catch (error) {
-    console.warn(`Backend API unavailable, using instant crop recommendation fallback for ${district}.`);
+    console.warn(`[cropService] Live backend unavailable for ${district}, using offline estimate:`, error);
+    const matchKey =
+      Object.keys(PUNJAB_DATASET_FALLBACK).find((k) => k.toLowerCase() === district.toLowerCase()) || 'Ludhiana';
+    const geo = PUNJAB_DATASET_FALLBACK[matchKey];
+    return withDiseaseRisks({ ...computeCropRecommendations(geo), source: 'estimated' });
   }
-  return withDiseaseRisks({ ...fallback, district });
 }
