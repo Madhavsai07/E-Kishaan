@@ -2,17 +2,10 @@ import type { ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { Leaf } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { isSupabaseConfigured } from '@/lib/supabase';
 
 export default function RequireAuth({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
   const location = useLocation();
-
-  // Supabase isn't configured yet — let requests through so the dashboard
-  // stays reachable while keys are being set up (see .env.local.example).
-  if (!isSupabaseConfigured) {
-    return <>{children}</>;
-  }
 
   if (loading) {
     return (

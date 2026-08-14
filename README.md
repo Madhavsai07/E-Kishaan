@@ -4,7 +4,8 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5-3178C6?logo=typescript)](https://www.typescriptlang.org/)
 [![Vite](https://img.shields.io/badge/Vite-5.4-646CFF?logo=vite)](https://vitejs.dev/)
 [![Node.js](https://img.shields.io/badge/Node.js-Express-339933?logo=nodedotjs)](https://nodejs.org/)
-[![Supabase](https://img.shields.io/badge/Supabase-Database%2FAuth-3FCF8E?logo=supabase)](https://supabase.com/)
+[![MongoDB](https://img.shields.io/badge/MongoDB-Database-47A248?logo=mongodb)](https://www.mongodb.com/)
+[![Docker](https://img.shields.io/badge/Docker-Backend%20Deploy-2496ED?logo=docker)](https://www.docker.com/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4-38B2AC?logo=tailwindcss)](https://tailwindcss.com/)
 [![Shadcn UI](https://img.shields.io/badge/Shadcn_UI-Radix_UI-000000)](https://ui.shadcn.com/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -51,7 +52,7 @@
 - **Educational Concepts**: Teaches dynamic programming, graph theory, memoization, and their direct applications to real-world agricultural supply chains and crop rotation planning.
 
 ### 6. 👤 User Profile, Authentication & Gamification (`UserProfile.tsx`, `AuthContext.tsx` & `userController.ts`)
-- **User Authentication**: Secure Login & Signup flows powered by Supabase Auth with route protection (`RequireAuth.tsx`).
+- **User Authentication**: Secure Login & Signup flows powered by a MongoDB + JWT auth system (access + refresh tokens, bcrypt password hashing) with route protection (`RequireAuth.tsx`).
 - **Farmer Profile Dashboard**: Displays user details (Ravi Kumar, Kottayam, Kerala), land size (4.0 acres), farming experience (12 years), and rank ("Advanced Farmer").
 - **Interactive Profile Editing**: Live toggle mode allowing users to edit personal, contact, and land information.
 - **Achievement & Rewards System**: 8 milestone badges (First Harvest, Soil Master, Weather Warrior, Profit Maximizer, Problem Solver, etc.) managed via `UserStatsContext`.
@@ -101,24 +102,34 @@ E-Kishaan/
     │       │   ├── RequireAuth.tsx       # Authentication Route Guard Component
     │       │   └── ui/                   # Pre-built Shadcn UI primitives
     │       ├── contexts/              # Global React Contexts
-    │       │   ├── AuthContext.tsx       # Supabase Authentication State & Session Provider
+    │       │   ├── AuthContext.tsx       # JWT Authentication State & Session Provider
     │       │   └── UserStatsContext.tsx  # Farmer Level, Achievements & Sustainability Points Provider
     │       ├── services/              # API Integration Services
-    │       │   ├── apiClient.ts          # Base Axios / Fetch Client
     │       │   └── weatherService.ts     # Weather API & OpenWeather Fetcher
     │       └── lib/                   # Utility Libraries & Engines
     │           ├── algorithms.ts      # Core Dynamic Programming & Agri Math Engine
-    │           ├── supabase.ts        # Supabase Client Configuration
+    │           ├── apiClient.ts       # Shared fetch wrapper (auth header + silent refresh)
+    │           ├── env.ts             # Env var validation (VITE_API_URL, ...)
     │           └── utils.ts           # Styling Utility (clsx + tailwind-merge)
-    └── backend/                       # Node.js + Express Backend API
+    ├── docker/                        # docker-compose.yml + README for local dev
+    ├── docs/                          # Deployment / architecture / env var / migration docs
+    └── backend/                       # Node.js + Express Backend API (deploys as a Docker container)
+        ├── Dockerfile                 # Multi-stage production image
         ├── package.json               # Backend Dependencies & Scripts
         ├── tsconfig.json              # Backend TypeScript Configuration
         ├── .env                       # Backend Environment Variables
+        ├── scripts/
+        │   └── migrateSupabaseToMongo.ts # One-time Supabase -> MongoDB auth migration
         └── src/
-            ├── server.ts              # Express Server Entry Point
+            ├── server.ts              # Express Server Entry Point (helmet/cors/rate-limit/morgan)
+            ├── config/                # env validation + MongoDB connection
+            ├── models/                # Mongoose schemas (User, RefreshToken, PasswordSetupToken)
+            ├── middleware/            # authenticate, authorize, validate, errorHandler
             ├── routes/                # API Route Handlers
-            │   └── api.ts             # Express Router with /api endpoints
+            │   ├── api.ts             # Express Router with /api endpoints
+            │   └── authRoutes.ts      # /api/auth/* (signup/login/refresh/logout/...)
             └── controllers/           # Business Logic Controllers
+                ├── authController.ts    # JWT auth endpoints
                 ├── weatherController.ts # Weather API Endpoints
                 ├── soilController.ts    # Soil Fertility & Fertilizer Logs
                 ├── marketController.ts  # Commodity Market Price Data
@@ -141,17 +152,23 @@ E-Kishaan/
 | **Data Visualization** | [Recharts 2.15](https://recharts.org/) | Interactive Responsive Charts |
 | **Icons** | [Lucide React](https://lucide.dev/) | Modern Crisp Vector Icons |
 | **State & Query** | [@tanstack/react-query 5.56](https://tanstack.com/query) | Async Data & State Management |
-| **Authentication & Database** | [@supabase/supabase-js 2.50](https://supabase.com/) | Auth & Database Sync |
 | **Routing** | [React Router DOM 6.26](https://reactrouter.com/) | Client-Side Page Routing |
 | **Notifications** | [Sonner](https://sonner.emilkowal.ski/) | Toast Notifications |
+| **i18n** | [react-i18next](https://react.i18next.com/) | Multi-language UI (English/Hindi/Punjabi/Tamil/Telugu) |
 
 ### Backend Stack
 | Layer | Technology | Purpose |
 | :--- | :--- | :--- |
-| **Runtime Environment** | [Node.js](https://nodejs.org/) | Backend JavaScript Runtime |
+| **Runtime Environment** | [Node.js 20](https://nodejs.org/) | Backend JavaScript Runtime |
+| **Deployment** | [Docker](https://www.docker.com/) (multi-stage build) | Runs as an independent container on Render |
 | **Framework** | [Express 4.19](https://expressjs.com/) | HTTP REST API Server |
 | **Language** | [TypeScript 5.4](https://www.typescriptlang.org/) | Type Safety |
-| **Database Sync** | [@supabase/supabase-js 2.39](https://supabase.com/) | Supabase Database Client |
+| **Database** | [MongoDB](https://www.mongodb.com/) + [Mongoose 8](https://mongoosejs.com/) | User accounts, refresh tokens |
+| **Auth** | [jsonwebtoken](https://github.com/auth0/node-jsonwebtoken) + [bcryptjs](https://github.com/dcodeIO/bcrypt.js) | Access/refresh JWTs, password hashing |
+| **Security** | [helmet](https://helmetjs.github.io/), [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit), [cors](https://github.com/expressjs/cors) | Security headers, brute-force protection, CORS |
+| **Logging** | [winston](https://github.com/winstonjs/winston) + [morgan](https://github.com/expressjs/morgan) | Structured app logs + HTTP request logs |
+| **Validation** | [zod](https://zod.dev/) | Request body & env var validation |
+| **Email** | [nodemailer](https://nodemailer.com/) | Password-reset / account-setup emails |
 | **Development Server** | [ts-node-dev](https://github.com/wclr/ts-node-dev) | Live Reloading Development Server |
 
 ---
@@ -177,10 +194,10 @@ E-Kishaan/
    ```
 
 3. **Configure Environment Variables**:
-   Create or verify `.env.local`:
+   Copy `.env.local.example` to `.env.local`:
    ```env
-   VITE_SUPABASE_URL=your_supabase_url
-   VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+   VITE_API_URL=http://localhost:5000
+   VITE_ML_BACKEND_URL=http://localhost:8000
    ```
 
 4. **Start Frontend Development Server**:
@@ -210,12 +227,16 @@ E-Kishaan/
    ```
 
 3. **Configure Environment Variables**:
-   Create or verify `.env`:
+   Copy `.env.example` to `.env` and fill it in (needs a MongoDB — see `docker/README.md`
+   for a one-command local MongoDB, or use Atlas):
    ```env
    PORT=5000
-   SUPABASE_URL=your_supabase_url
-   SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+   MONGODB_URI=mongodb://localhost:27017/ekishaan
+   JWT_ACCESS_SECRET=...            # 32+ random chars
+   JWT_REFRESH_SECRET=...           # 32+ random chars, different from the above
+   FRONTEND_URL=http://localhost:5173
    ```
+   Full reference: `docs/ENVIRONMENT.md`.
 
 4. **Start Backend Development Server**:
    ```bash
@@ -229,6 +250,18 @@ E-Kishaan/
    npm start
    ```
 
+---
+
+## 🚢 Deployment
+
+Production deploys as two independent services — frontend on Vercel, backend on Render
+as a Docker container — that talk to each other over env-var-configured URLs.
+Full step-by-step instructions: **[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)**.
+
+- **Architecture & auth design**: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- **Every environment variable**: [`docs/ENVIRONMENT.md`](docs/ENVIRONMENT.md)
+- **Migrating existing Supabase accounts to MongoDB**: [`docs/MIGRATION.md`](docs/MIGRATION.md)
+- **Local Docker + MongoDB setup**: [`docker/README.md`](docker/README.md)
 
 ## 🌐 GitHub Repositories
 - **Main Repo**: [https://github.com/Rama542/E-Kishaan.git](https://github.com/Rama542/E-Kishaan.git)

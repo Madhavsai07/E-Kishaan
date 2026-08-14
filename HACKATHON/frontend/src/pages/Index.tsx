@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -6,20 +6,32 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Skeleton } from '@/components/ui/skeleton';
 import LanguageToggle from '@/components/LanguageToggle';
 import { Bell, CloudRain, Leaf, TrendingUp, Zap, LogOut } from 'lucide-react';
-import WeatherDashboard from '@/components/WeatherDashboard';
-import SoilFertility from '@/components/SoilFertility';
-import CropGrowth from '@/components/CropGrowth';
-import MarketAnalysis from '@/components/MarketAnalysis';
-import FrankensteinSolver from '@/components/FrankensteinSolver';
-import FarmRoadmap from '@/components/FarmRoadmap';
-import UserProfile from '@/components/UserProfile';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/components/ui/sonner';
 
-// Fallback demo values shown when there's no signed-in Supabase user yet
-// (e.g. Supabase isn't configured, so RequireAuth lets the dashboard through).
+// Each dashboard tab is its own chunk — a visitor only downloads the (often
+// chart-heavy) code for a module once they actually open that tab, instead
+// of all six shipping in the initial bundle.
+const WeatherDashboard = lazy(() => import('@/components/WeatherDashboard'));
+const SoilFertility = lazy(() => import('@/components/SoilFertility'));
+const CropGrowth = lazy(() => import('@/components/CropGrowth'));
+const MarketAnalysis = lazy(() => import('@/components/MarketAnalysis'));
+const FrankensteinSolver = lazy(() => import('@/components/FrankensteinSolver'));
+const FarmRoadmap = lazy(() => import('@/components/FarmRoadmap'));
+
+function TabFallback() {
+  return (
+    <div className="space-y-4">
+      <Skeleton className="h-10 w-1/3" />
+      <Skeleton className="h-64 w-full" />
+    </div>
+  );
+}
+
+// Fallback demo values shown when there's no signed-in user yet.
 const demoUser = { name: 'Ravi Kumar', location: 'India' };
 
 export default function Index() {
@@ -179,7 +191,9 @@ export default function Index() {
                   <CardDescription>{t('dashboard.overview.next7Days')}</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <WeatherDashboard compact={true} />
+                  <Suspense fallback={<TabFallback />}>
+                    <WeatherDashboard compact={true} />
+                  </Suspense>
                 </CardContent>
               </Card>
 
@@ -209,27 +223,39 @@ export default function Index() {
           </TabsContent>
 
           <TabsContent value="weather">
-            <WeatherDashboard />
+            <Suspense fallback={<TabFallback />}>
+              <WeatherDashboard />
+            </Suspense>
           </TabsContent>
 
           <TabsContent value="soil">
-            <SoilFertility />
+            <Suspense fallback={<TabFallback />}>
+              <SoilFertility />
+            </Suspense>
           </TabsContent>
 
           <TabsContent value="crops">
-            <CropGrowth />
+            <Suspense fallback={<TabFallback />}>
+              <CropGrowth />
+            </Suspense>
           </TabsContent>
 
           <TabsContent value="market">
-            <MarketAnalysis />
+            <Suspense fallback={<TabFallback />}>
+              <MarketAnalysis />
+            </Suspense>
           </TabsContent>
 
           <TabsContent value="roadmap">
-            <FarmRoadmap />
+            <Suspense fallback={<TabFallback />}>
+              <FarmRoadmap />
+            </Suspense>
           </TabsContent>
 
           <TabsContent value="solver">
-            <FrankensteinSolver />
+            <Suspense fallback={<TabFallback />}>
+              <FrankensteinSolver />
+            </Suspense>
           </TabsContent>
         </Tabs>
       </main>

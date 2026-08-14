@@ -88,8 +88,8 @@ export default function WeatherDashboard({ compact = false }: WeatherDashboardPr
         setLastSuccessResponse(response);
         setError(null);
         recordWeatherCheck();
-      } catch (err: any) {
-        if (err.name === 'AbortError') {
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name === 'AbortError') {
           return;
         }
         console.error('Weather Data Fetch Error:', err);
@@ -504,7 +504,7 @@ export default function WeatherDashboard({ compact = false }: WeatherDashboardPr
                   <XAxis dataKey="day" />
                   <YAxis />
                   <Tooltip
-                    formatter={(value: any, name: string) => [
+                    formatter={(value: number | string, name: string) => [
                       `${value} ${name.includes('Temp') ? '°C' : 'mm'}`,
                       name,
                     ]}
@@ -552,7 +552,7 @@ export default function WeatherDashboard({ compact = false }: WeatherDashboardPr
                   <XAxis dataKey="month" />
                   <YAxis />
                   <Tooltip
-                    formatter={(value: any, name: string) => [
+                    formatter={(value: number | string, name: string) => [
                       `${value} ${name.includes('Temp') ? '°C' : 'mm'}`,
                       name,
                     ]}

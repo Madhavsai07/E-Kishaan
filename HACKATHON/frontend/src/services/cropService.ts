@@ -1,5 +1,6 @@
 import { PUNJAB_DATASET_FALLBACK } from './soilService';
 import { computeCropRecommendations } from './cropOfflineEngine';
+import { API_URL } from '@/lib/env';
 
 export interface CropFactors {
   soilMatch: number;
@@ -60,7 +61,7 @@ export interface CropRecommendationResponse {
   source: 'live' | 'estimated';
 }
 
-const API_BASE = '/api/crops';
+const API_BASE = `${API_URL}/api/crops`;
 
 /**
  * Fetches AI crop recommendations for a district. Tries the live backend
